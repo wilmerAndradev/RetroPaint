@@ -1,8 +1,5 @@
-# System files
-Thumbs.db
-Desktop.ini
+node_modules/
 .DS_Store
-
-# Temporary files
-*.tmp
-*.bak
+dist/
+.env
+*.log
