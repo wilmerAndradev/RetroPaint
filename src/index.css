@@ -1,0 +1,329 @@
+@import "tailwindcss";
+
+@theme {
+  --font-press-start: "Press Start 2P", system-ui, sans-serif;
+  --font-inter: "Inter", system-ui, sans-serif;
+
+  --color-win-grey: #eef2f6;
+  --color-win-grey-light: #ffffff;
+  --color-win-grey-dark: #b8c4cf;
+  --color-win-grey-darkest: #7e8e9f;
+  --color-win-navy: #0f2b5c;
+  --color-win-blue: #1e3a8a;
+  --color-win-accent: #00a2ff;
+
+  --shadow-win-raised: inset 1px 1px 0px #ffffff, inset -1px -1px 0px #b8c4cf;
+  --shadow-win-sunken: inset 1px 1px 0px #7e8e9f, inset -1px -1px 0px #ffffff;
+}
+
+/* ==========================================
+   SISTEMA DE VARIABLES DE TEMA DINÁMICAS
+   ========================================== */
+:root {
+  /* Tema Retro Premium (Claro) */
+  --bg-primary: #eef2f6;
+  --bg-secondary: #e5eaf0;
+  --bg-card: #ffffff;
+  --border-color: #ccd4dc;
+  --border-width: 1px;
+  --border-style: solid;
+  --border-radius: 6px;
+
+  --text-main: #0f2b5c;
+  --text-muted: #7e8e9f;
+
+  --accent-color: #1e3a8a;
+  --accent-hover: #00a2ff;
+  --accent-bg-active: #ffffff;
+
+  --shadow-raised: inset 1px 1px 0px #ffffff, inset -1px -1px 0px #b8c4cf;
+  --shadow-sunken: inset 1px 1px 0px #7e8e9f, inset -1px -1px 0px #ffffff;
+  --shadow-button: 0px 1px 2px rgba(15, 43, 92, 0.05);
+
+  --font-family: var(--font-inter);
+}
+
+.dark {
+  /* Modo Oscuro Premium */
+  --bg-primary: #0f172a; /* Slate 900 */
+  --bg-secondary: #1e293b; /* Slate 800 */
+  --bg-card: #1e293b; /* Slate 800 */
+  --border-color: #334155; /* Slate 700 */
+  --border-width: 1px;
+  --border-style: solid;
+  --border-radius: 6px;
+
+  --text-main: #f1f5f9; /* Slate 100 */
+  --text-muted: #94a3b8; /* Slate 400 */
+
+  --accent-color: #38bdf8; /* Sky 400 */
+  --accent-hover: #0ea5e9; /* Sky 500 */
+  --accent-bg-active: #0f172a; /* Slate 900 */
+
+  --shadow-raised:
+    0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
+  --shadow-sunken: inset 0 2px 4px 0 rgba(0, 0, 0, 0.5);
+  --shadow-button: 0px 1px 2px rgba(0, 0, 0, 0.3);
+
+  --font-family: var(--font-inter);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    font-family: var(--font-family);
+    image-rendering: pixelated;
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-main);
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition:
+      background-color 0.3s ease,
+      color 0.3s ease;
+  }
+
+  /* Custom themeable scrollbars */
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+    background-image:
+      radial-gradient(var(--border-color) 15%, transparent 15%),
+      radial-gradient(var(--border-color) 15%, transparent 15%);
+    background-size: 6px 6px;
+    background-position:
+      0 0,
+      3px 3px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--bg-primary);
+    border: var(--border-width) var(--border-style) var(--border-color);
+    box-shadow: var(--shadow-raised);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background: var(--bg-primary);
+    box-shadow: var(--shadow-sunken);
+  }
+
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
+}
+
+/* ==========================================
+   UTILIDADES ESTILÍSTICAS ADAPTATIVAS
+   ========================================== */
+.theme-transition {
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+/* Bordes biselados adaptables al tema */
+.theme-raised-soft {
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-raised);
+}
+
+.theme-sunken-soft {
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sunken);
+}
+
+.theme-card {
+  background-color: var(--bg-card);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--text-main);
+}
+
+/* Botón interactivo adaptativo */
+.theme-btn {
+  background-color: var(--bg-card);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--text-main);
+  box-shadow: var(--shadow-button);
+  cursor: default;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.theme-btn:hover {
+  background-color: var(--bg-primary);
+  color: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.theme-btn:active,
+.theme-btn.active {
+  background-color: var(--accent-bg-active);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  box-shadow: var(--shadow-sunken);
+  transform: translateY(1px);
+}
+
+.font-press-start {
+  font-family: var(--font-press-start);
+  -webkit-font-smoothing: none;
+}
+
+/* Estilo de cuadrícula retro en el lienzo */
+.pixel-grid-bg {
+  background-image:
+    linear-gradient(45deg, #eee 25%, transparent 25%),
+    linear-gradient(-45deg, #eee 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #eee 75%),
+    linear-gradient(-45deg, transparent 75%, #eee 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0px;
+}
+
+.dark .pixel-grid-bg {
+  background-image:
+    linear-gradient(45deg, #27272a 25%, transparent 25%),
+    linear-gradient(-45deg, #27272a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #27272a 75%),
+    linear-gradient(-45deg, transparent 75%, #27272a 75%);
+}
+
+/* ==========================================
+   SISTEMA DE CURSORES PREMIUM EN SVG
+   ========================================== */
+.cursor-tool-pencil {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M0 32l8-2 16-16-6-6L2 24z' fill='%23ffffff' stroke='%230f2b5c' stroke-width='1.5'/><path d='M0 32l3-7 4 4z' fill='%23ff5757' stroke='%230f2b5c' stroke-width='1.5'/><path d='M18 8l6 6' stroke='%230f2b5c' stroke-width='1.5'/></svg>")
+    0 32,
+    pointer;
+}
+
+.cursor-tool-brush {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M0 32l4-10 8 8z' fill='%23cbd5e1' stroke='%230f2b5c' stroke-width='1.5'/><path d='M4 22L22 4a3 3 0 0 1 4 4L12 26 4 22z' fill='%23ffffff' stroke='%230f2b5c' stroke-width='1.5'/><path d='M16 6l6 6' stroke='%230f2b5c' stroke-width='1.5'/></svg>")
+    0 32,
+    pointer;
+}
+
+.cursor-tool-eraser {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><rect x='2' y='2' width='20' height='20' rx='4' fill='%23fda4af' stroke='%230f2b5c' stroke-width='1.5'/><line x1='6' y1='12' x2='18' y2='12' stroke='%23ffffff' stroke-width='2' stroke-linecap='round'/></svg>")
+    12 12,
+    pointer;
+}
+
+.cursor-tool-eyedropper {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M2 30l6-6 18-18a4 4 0 0 0-6-6L2 18z' fill='%23ffffff' stroke='%230f2b5c' stroke-width='1.5'/><path d='M2 30l4-1' stroke='%230f2b5c' stroke-width='2'/><path d='M16 6l10 10' stroke='%230f2b5c' stroke-width='1.5'/></svg>")
+    2 30,
+    pointer;
+}
+
+.cursor-tool-bucket {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M6 14l10-10 12 12-10 10z' fill='%23ffffff' stroke='%230f2b5c' stroke-width='1.5'/><path d='M16 4l12 12' stroke='%230f2b5c' stroke-width='1.5'/><path d='M6 14s-3 2-4 5c-1 3 1 5 4 4 3-1 4-4 4-4' fill='%2338bdf8' stroke='%230f2b5c' stroke-width='1.5'/><circle cx='2' cy='22' r='2' fill='%2338bdf8'/></svg>")
+    2 22,
+    pointer;
+}
+
+.cursor-tool-text {
+  cursor: text;
+}
+
+.cursor-tool-select {
+  cursor: crosshair;
+}
+
+.cursor-tool-spray {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><rect x='10' y='8' width='12' height='20' rx='3' fill='%23ffffff' stroke='%230f2b5c' stroke-width='1.5'/><rect x='12' y='2' width='8' height='6' fill='%23f43f5e' stroke='%230f2b5c' stroke-width='1.5'/><path d='M12 8h8' stroke='%230f2b5c' stroke-width='1.5'/></svg>")
+    16 4,
+    pointer;
+}
+
+.cursor-tool-bezier,
+.cursor-tool-polygon,
+.cursor-tool-line,
+.cursor-tool-rectangle,
+.cursor-tool-ellipse {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><line x1='16' y1='4' x2='16' y2='28' stroke='%230f2b5c' stroke-width='1.5'/><line x1='4' y1='16' x2='28' y2='16' stroke='%230f2b5c' stroke-width='1.5'/><circle cx='16' cy='16' r='3' fill='none' stroke='%2338bdf8' stroke-width='1.5'/></svg>")
+    16 16,
+    crosshair;
+}
+
+/* ==========================================
+   CLASES COMPATIBLES ANTERIORES (FALLBACK)
+   ========================================== */
+.win95-raised-soft {
+  box-shadow: var(--shadow-raised);
+  border: var(--border-width) var(--border-style) var(--border-color);
+}
+.win95-sunken-soft {
+  box-shadow: var(--shadow-sunken);
+  border: var(--border-width) var(--border-style) var(--border-color);
+}
+.win95-raised-double {
+  box-shadow: var(--shadow-raised);
+  border: var(--border-width) var(--border-style) var(--border-color);
+}
+.win95-sunken-double {
+  box-shadow: var(--shadow-sunken);
+  border: var(--border-width) var(--border-style) var(--border-color);
+}
+.win95-btn {
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  border: var(--border-width) var(--border-style) var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-button);
+  cursor: default;
+}
+.win95-btn:hover {
+  background-color: var(--bg-primary);
+  color: var(--accent-hover);
+}
+.win95-btn:active,
+.win95-btn.active {
+  background-color: var(--accent-bg-active);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  box-shadow: var(--shadow-sunken);
+}
+.win95-text-shadow {
+  text-shadow: 1px 1px 0px var(--bg-primary);
+}
+.win95-title-bar-gradient {
+  background: linear-gradient(
+    90deg,
+    var(--accent-color) 0%,
+    var(--accent-hover) 100%
+  );
+}
+.retro-panel-border {
+  border: var(--border-width) var(--border-style) var(--border-color);
+}
+.pixelated-canvas {
+  image-rendering: pixelated;
+}
