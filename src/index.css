@@ -1,7 +1,10 @@
+/* UI/UX Pro Max Skill — Typography: Pixel Retro pairing (Press Start 2P + VT323) */
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap");
 @import "tailwindcss";
 
 @theme {
   --font-press-start: "Press Start 2P", system-ui, sans-serif;
+  --font-vt323: "VT323", monospace; /* UI/UX Pro Max: Pixel Retro body font */
   --font-inter: "Inter", system-ui, sans-serif;
 
   --color-win-grey: #eef2f6;
@@ -12,8 +15,21 @@
   --color-win-blue: #1e3a8a;
   --color-win-accent: #00a2ff;
 
+  /* UI/UX Pro Max: Drawing Canvas dark palette */
+  --color-canvas-bg: #1c1917;
+  --color-canvas-card: #262321;
+  --color-canvas-muted: #231b28;
+  --color-canvas-primary: #7c3aed;
+  --color-canvas-accent: #0891b2;
+
   --shadow-win-raised: inset 1px 1px 0px #ffffff, inset -1px -1px 0px #b8c4cf;
   --shadow-win-sunken: inset 1px 1px 0px #7e8e9f, inset -1px -1px 0px #ffffff;
+
+  /* UI/UX Pro Max: Pixel Art border system */
+  --pixel-border-1: 1px solid #000;
+  --pixel-border-2: 2px solid #000;
+  --pixel-glow-accent: 0 0 8px rgba(124, 58, 237, 0.6);
+  --pixel-glow-teal: 0 0 8px rgba(8, 145, 178, 0.6);
 }
 
 /* ==========================================
@@ -44,26 +60,26 @@
 }
 
 .dark {
-  /* Modo Oscuro Premium */
-  --bg-primary: #0f172a; /* Slate 900 */
-  --bg-secondary: #1e293b; /* Slate 800 */
-  --bg-card: #1e293b; /* Slate 800 */
-  --border-color: #334155; /* Slate 700 */
+  /* UI/UX Pro Max: Drawing & Sketching Canvas dark palette */
+  --bg-primary: #1c1917; /* canvas-bg: Deep warm dark */
+  --bg-secondary: #231b28; /* canvas-muted: Dark purple-tinted panels */
+  --bg-card: #262321; /* canvas-card: Slightly lighter dark card */
+  --border-color: rgba(255, 255, 255, 0.08); /* canvas border: ultra-subtle */
   --border-width: 1px;
   --border-style: solid;
   --border-radius: 6px;
 
-  --text-main: #f1f5f9; /* Slate 100 */
-  --text-muted: #94a3b8; /* Slate 400 */
+  --text-main: #f1f5f9; /* Slate 100: high contrast on dark */
+  --text-muted: #94a3b8; /* Slate 400: muted labels */
 
-  --accent-color: #38bdf8; /* Sky 400 */
-  --accent-hover: #0ea5e9; /* Sky 500 */
-  --accent-bg-active: #0f172a; /* Slate 900 */
+  --accent-color: #7c3aed; /* canvas-primary: Deep violet */
+  --accent-hover: #0891b2; /* canvas-accent: Bright teal */
+  --accent-bg-active: #1c1917;
 
   --shadow-raised:
-    0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
-  --shadow-sunken: inset 0 2px 4px 0 rgba(0, 0, 0, 0.5);
-  --shadow-button: 0px 1px 2px rgba(0, 0, 0, 0.3);
+    0 1px 3px 0 rgba(0, 0, 0, 0.5), 0 1px 2px -1px rgba(0, 0, 0, 0.4);
+  --shadow-sunken: inset 0 2px 4px 0 rgba(0, 0, 0, 0.7);
+  --shadow-button: 0px 1px 4px rgba(124, 58, 237, 0.2);
 
   --font-family: var(--font-inter);
 }
@@ -72,6 +88,10 @@
   * {
     box-sizing: border-box;
     font-family: var(--font-family);
+  }
+
+  canvas,
+  img {
     image-rendering: pixelated;
   }
 
@@ -155,7 +175,7 @@
   color: var(--text-main);
 }
 
-/* Botón interactivo adaptativo */
+/* Botón interactivo adaptativo — UI/UX Pro Max: 80ms micro-interactions */
 .theme-btn {
   background-color: var(--bg-card);
   border: var(--border-width) var(--border-style) var(--border-color);
@@ -163,7 +183,7 @@
   color: var(--text-main);
   box-shadow: var(--shadow-button);
   cursor: default;
-  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: all 0.08s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .theme-btn:hover {
@@ -181,32 +201,53 @@
   transform: translateY(1px);
 }
 
+/* UI/UX Pro Max: Violet glow on active button in dark mode */
+.dark .theme-btn:active,
+.dark .theme-btn.active {
+  box-shadow: var(--pixel-glow-accent), var(--shadow-sunken);
+}
+
+/* UI/UX Pro Max: Glassmorphism card borders in dark mode */
+.dark .theme-card {
+  border-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--bg-card);
+}
+
 .font-press-start {
   font-family: var(--font-press-start);
   -webkit-font-smoothing: none;
 }
 
-/* Estilo de cuadrícula retro en el lienzo */
+/* Fondo sutil del área de trabajo (puntos finos, sin líneas diagonales) */
 .pixel-grid-bg {
-  background-image:
-    linear-gradient(45deg, #eee 25%, transparent 25%),
-    linear-gradient(-45deg, #eee 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #eee 75%),
-    linear-gradient(-45deg, transparent 75%, #eee 75%);
+  background-color: var(--bg-secondary);
+  background-image: radial-gradient(circle, #c5cdd8 1px, transparent 1px);
   background-size: 16px 16px;
-  background-position:
-    0 0,
-    0 8px,
-    8px -8px,
-    -8px 0px;
 }
 
+/* UI/UX Pro Max: Dark mode workspace uses violet-tinted subtle dots */
 .dark .pixel-grid-bg {
-  background-image:
-    linear-gradient(45deg, #27272a 25%, transparent 25%),
-    linear-gradient(-45deg, #27272a 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #27272a 75%),
-    linear-gradient(-45deg, transparent 75%, #27272a 75%);
+  background-color: var(--bg-secondary);
+  background-image: radial-gradient(
+    circle,
+    rgba(124, 58, 237, 0.15) 1px,
+    transparent 1px
+  );
+  background-size: 16px 16px;
+}
+
+/* UI/UX Pro Max: Pixel Art utility classes */
+.font-vt323 {
+  font-family: var(--font-vt323);
+  -webkit-font-smoothing: none;
+}
+
+.pixel-glow-accent {
+  box-shadow: var(--pixel-glow-accent);
+}
+
+.pixel-glow-teal {
+  box-shadow: var(--pixel-glow-teal);
 }
 
 /* ==========================================
@@ -326,4 +367,40 @@
 }
 .pixelated-canvas {
   image-rendering: pixelated;
+}
+
+/* ==========================================
+   ANIMACIÓN DE HORMIGAS MARCHANTES (SELECCIÓN)
+   ========================================== */
+@keyframes marchingAnts {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+
+.selection-overlay {
+  stroke: white;
+  stroke-width: 1;
+  stroke-dasharray: 8 8;
+  fill: rgba(100, 150, 255, 0.1);
+  animation: marchingAnts 0.5s linear infinite;
+}
+
+.selection-overlay-shadow {
+  stroke: black;
+  stroke-width: 1;
+  stroke-dasharray: 8 8;
+  stroke-dashoffset: 8;
+  fill: none;
+  animation: marchingAnts 0.5s linear infinite;
+}
+
+.canvas-transparent-bg {
+  background-image: conic-gradient(
+    #cccccc 90deg,
+    #ffffff 90deg 180deg,
+    #ffffff 180deg 270deg,
+    #cccccc 270deg
+  );
+  background-size: 16px 16px;
 }

@@ -1,9 +1,10 @@
 import type React from 'react';
 import { useAppStore } from '../../store/useAppStore';
+import { useCanvasStore } from '../../store/useCanvasStore';
 import { exportPNG } from '../../utils/exportCanvas';
 
 interface ToolbarProps {
-  clearCanvas: () => void;
+  clearCanvas: (width?: number, height?: number) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -19,7 +20,11 @@ export function Toolbar({
 }: ToolbarProps) {
   const zoom = useAppStore((state) => state.zoom);
   const setZoom = useAppStore((state) => state.setZoom);
+  const activeTool = useAppStore((state) => state.activeTool);
   const setStatusText = useAppStore((state) => state.setStatusText);
+
+  const fillTolerance = useCanvasStore((state) => state.fillTolerance);
+  const setFillTolerance = useCanvasStore((state) => state.setFillTolerance);
 
   const handleZoomChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newZoom = Number(e.target.value);
@@ -40,7 +45,7 @@ export function Toolbar({
       {/* Nuevo */}
       <button
         type="button"
-        onClick={clearCanvas}
+        onClick={() => clearCanvas()}
         className="win95-btn py-[3px] px-[6px] flex items-center gap-1"
         title="Nuevo lienzo (Ctrl+N)"
       >
@@ -115,6 +120,28 @@ export function Toolbar({
           </select>
         </div>
       </div>
+
+      {/* Tolerancia del Relleno (Bote de pintura / bucket) */}
+      {activeTool === 'bucket' && (
+        <div className="flex items-center gap-2 text-[10px] ml-4 pl-4 border-l border-[#808080]/40">
+          <label htmlFor="toolbar-tolerance" className="text-[10px] mr-1">
+            Tolerancia:
+          </label>
+          <input
+            id="toolbar-tolerance"
+            type="range"
+            min={0}
+            max={255}
+            value={fillTolerance}
+            onChange={(e) => setFillTolerance(Number(e.target.value))}
+            className="w-20 cursor-pointer h-1.5 accent-[var(--accent-color)]"
+            title="Tolerancia del bote de pintura (0-255)"
+          />
+          <span className="font-mono text-[9px] w-6 text-right">
+            {fillTolerance}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

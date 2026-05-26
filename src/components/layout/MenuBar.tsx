@@ -3,7 +3,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { exportJPEG, exportPNG, exportWEBP } from '../../utils/exportCanvas';
 
 interface MenuBarProps {
-  clearCanvas: () => void;
+  clearCanvas: (width?: number, height?: number) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;

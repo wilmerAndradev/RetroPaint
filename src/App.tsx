@@ -21,6 +21,7 @@ function App() {
     onMouseMove,
     onMouseUp,
     onMouseLeave,
+    onDoubleClick,
     clearCanvas,
     handleUndo,
     handleRedo,
@@ -32,13 +33,27 @@ function App() {
     cutSelection,
     pasteSelection,
     loadDrawingOnCanvas,
+    cancelActiveOperation,
+    selectAll,
+    deselect,
+    openImageFile,
+    pasteFromClipboard,
   } = useCanvas();
 
   // Inicializar manejadores de teclado globales
   useKeyboard({
-    canvasRef,
     undo: handleUndo,
     redo: handleRedo,
+    cancelActiveOperation,
+    copySelection,
+    cutSelection,
+    pasteSelection,
+    deleteSelection,
+    canvasRef,
+    selectAll,
+    deselect,
+    openImageFile,
+    pasteFromClipboard,
   });
 
   // Animaciones de entrada sincronizadas (Initial load staggered animation)
@@ -130,6 +145,7 @@ function App() {
             onMouseMove={onMouseMove}
             onMouseUp={onMouseUp}
             onMouseLeave={onMouseLeave}
+            onDoubleClick={onDoubleClick}
             drawTextOnCanvas={drawTextOnCanvas}
           />
         </div>

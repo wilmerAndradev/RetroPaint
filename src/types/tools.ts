@@ -11,7 +11,8 @@ export type ToolType =
   | 'ellipse'
   | 'bezier'
   | 'polygon'
-  | 'spray';
+  | 'spray'
+  | 'move';
 
 export type BrushStyle = 'normal' | 'watercolor' | 'chalk' | 'spray' | 'pixel';
 

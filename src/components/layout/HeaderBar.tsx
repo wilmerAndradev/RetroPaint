@@ -1,16 +1,130 @@
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppStore } from '../../store/useAppStore';
 import { useCanvasStore } from '../../store/useCanvasStore';
 import { exportJPEG, exportPNG, exportWEBP } from '../../utils/exportCanvas';
 
 interface HeaderBarProps {
-  clearCanvas: () => void;
+  clearCanvas: (width?: number, height?: number) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
+}
+
+interface ResizePreviewProps {
+  canvasWidth: number;
+  canvasHeight: number;
+  customWidth: number;
+  customHeight: number;
+  resizeModeLocal: 'center' | 'top-left' | 'clean';
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+}
+
+function ResizePreviewCanvas({
+  canvasWidth,
+  canvasHeight,
+  customWidth,
+  customHeight,
+  resizeModeLocal,
+  canvasRef,
+}: ResizePreviewProps) {
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const previewCanvas = previewCanvasRef.current;
+    if (!previewCanvas) return;
+    const ctx = previewCanvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, 150, 100);
+
+    // Draw background
+    ctx.fillStyle = '#1e293b'; // slate 800
+    ctx.fillRect(0, 0, 150, 100);
+
+    // Fit bounding boxes
+    const maxW = Math.max(canvasWidth, customWidth);
+    const maxH = Math.max(canvasHeight, customHeight);
+    const s = Math.min(130 / maxW, 80 / maxH);
+
+    const ow = canvasWidth * s;
+    const oh = canvasHeight * s;
+    const nw = customWidth * s;
+    const nh = customHeight * s;
+
+    // Center coordinates
+    const nX = 75 - nw / 2;
+    const nY = 50 - nh / 2;
+
+    let oX = 75 - ow / 2;
+    let oY = 50 - oh / 2;
+
+    if (resizeModeLocal === 'top-left') {
+      oX = nX;
+      oY = nY;
+    }
+
+    // Draw new canvas outline (dashed light blue)
+    ctx.strokeStyle = '#38bdf8'; // sky 400
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 2]);
+    ctx.strokeRect(nX, nY, nw, nh);
+
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.05)';
+    ctx.fillRect(nX, nY, nw, nh);
+
+    if (resizeModeLocal !== 'clean') {
+      // Draw original content clipped to original bounds
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(oX, oY, ow, oh);
+      ctx.clip();
+
+      if (canvasRef.current) {
+        ctx.drawImage(canvasRef.current, oX, oY, ow, oh);
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(oX, oY, ow, oh);
+      }
+      ctx.restore();
+
+      // Original bounds (solid red)
+      ctx.strokeStyle = '#f43f5e'; // rose 500
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.strokeRect(oX, oY, ow, oh);
+    } else {
+      // Clean mode: original greyed out
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      ctx.strokeRect(oX, oY, ow, oh);
+    }
+  }, [
+    canvasWidth,
+    canvasHeight,
+    customWidth,
+    customHeight,
+    resizeModeLocal,
+    canvasRef,
+  ]);
+
+  return (
+    <div className="flex flex-col items-center gap-1.5 p-2 bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg">
+      <span className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+        VISTA PREVIA
+      </span>
+      <canvas
+        ref={previewCanvasRef}
+        width={150}
+        height={100}
+        className="border border-[var(--border-color)] rounded bg-white dark:bg-zinc-800 shadow-sm"
+      />
+    </div>
+  );
 }
 
 export function HeaderBar({
@@ -37,13 +151,75 @@ export function HeaderBar({
   // Estados de dropdowns
   const [zoomDropdownOpen, setZoomDropdownOpen] = useState(false);
 
-  // Estados de modales premium
-  const [isResizeModalOpen, setIsResizeModalOpen] = useState(false);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  // Estados de modales premium desde Zustand
+  const isResizeModalOpen = useAppStore((state) => state.isResizeModalOpen);
+  const setIsResizeModalOpen = useAppStore(
+    (state) => state.setIsResizeModalOpen,
+  );
+  const isExportModalOpen = useAppStore((state) => state.isExportModalOpen);
+  const setIsExportModalOpen = useAppStore(
+    (state) => state.setIsExportModalOpen,
+  );
+  const isNewCanvasModalOpen = useAppStore(
+    (state) => state.isNewCanvasModalOpen,
+  );
+  const setIsNewCanvasModalOpen = useAppStore(
+    (state) => state.setIsNewCanvasModalOpen,
+  );
+  const isShortcutsModalOpen = useAppStore(
+    (state) => state.isShortcutsModalOpen,
+  );
+  const setIsShortcutsModalOpen = useAppStore(
+    (state) => state.setIsShortcutsModalOpen,
+  );
+
+  // Estados locales para nuevos modals
+  const [newWidth, setNewWidth] = useState(canvasWidth);
+  const [newHeight, setNewHeight] = useState(canvasHeight);
+  const [newBackground, setNewBackground] = useState<
+    'white' | 'black' | 'transparent'
+  >('white');
+  const [shortcutsTab, setShortcutsTab] = useState<
+    'herramientas' | 'edicion' | 'navegacion'
+  >('herramientas');
 
   // Estado para el redimensionamiento personalizado
   const [customWidth, setCustomWidth] = useState(canvasWidth);
   const [customHeight, setCustomHeight] = useState(canvasHeight);
+  const [resizeModeLocal, setResizeModeLocal] = useState<
+    'center' | 'top-left' | 'clean'
+  >('center');
+
+  const [lockRatio, setLockRatio] = useState(false);
+  const [unit, setUnit] = useState<'px' | 'cm' | 'in'>('px');
+
+  const originalRatio = canvasWidth / (canvasHeight || 1);
+
+  const handleWidthChange = (newWidth: number) => {
+    setCustomWidth(newWidth);
+    if (lockRatio) {
+      setCustomHeight(Math.round(newWidth / originalRatio));
+    }
+  };
+
+  const handleHeightChange = (newHeight: number) => {
+    setCustomHeight(newHeight);
+    if (lockRatio) {
+      setCustomWidth(Math.round(newHeight * originalRatio));
+    }
+  };
+
+  const pxToUnit = (px: number, u: 'px' | 'cm' | 'in') => {
+    if (u === 'px') return px;
+    if (u === 'in') return parseFloat((px / 96).toFixed(2));
+    return parseFloat((px / (96 / 2.54)).toFixed(2));
+  };
+
+  const unitToPx = (val: number, u: 'px' | 'cm' | 'in') => {
+    if (u === 'px') return Math.round(val);
+    if (u === 'in') return Math.round(val * 96);
+    return Math.round(val * (96 / 2.54));
+  };
 
   // Estado para la exportación avanzada
   const [exportFileName, setExportFileName] = useState('retro-paint-dibujo');
@@ -154,10 +330,10 @@ export function HeaderBar({
       setStatusText('Las dimensiones máximas son 3000x3000 px');
       return;
     }
-    setDimensions(customWidth, customHeight);
+    setDimensions(customWidth, customHeight, resizeModeLocal);
     setIsResizeModalOpen(false);
     setStatusText(
-      `Tamaño del lienzo cambiado a ${customWidth}x${customHeight}px`,
+      `Tamaño del lienzo cambiado a ${customWidth}x${customHeight}px (${resizeModeLocal.toUpperCase()})`,
     );
   };
 
@@ -246,7 +422,11 @@ export function HeaderBar({
         {/* Botón NUEVO */}
         <button
           type="button"
-          onClick={clearCanvas}
+          onClick={() => {
+            setNewWidth(canvasWidth);
+            setNewHeight(canvasHeight);
+            setIsNewCanvasModalOpen(true);
+          }}
           className="flex flex-col items-center justify-center gap-1 px-3 h-[48px] hover:bg-[var(--bg-card)] border border-transparent hover:border-[var(--border-color)] rounded-md transition-all active:scale-[0.97] text-[var(--text-main)]"
           title="Nuevo Lienzo (Limpiar)"
         >
@@ -300,6 +480,17 @@ export function HeaderBar({
         >
           <span className="text-[12px]">🖨️</span>
           <span className="text-[8px] font-bold tracking-wider">IMPRIMIR</span>
+        </button>
+
+        {/* Botón ATAJOS */}
+        <button
+          type="button"
+          onClick={() => setIsShortcutsModalOpen(true)}
+          className="flex flex-col items-center justify-center gap-1 px-3 h-[48px] hover:bg-[var(--bg-card)] border border-transparent hover:border-[var(--border-color)] rounded-md transition-all active:scale-[0.97] text-[var(--text-main)]"
+          title="Ver atajos de teclado (F1 o Ctrl+H)"
+        >
+          <span className="text-[12px]">⌨️</span>
+          <span className="text-[8px] font-bold tracking-wider">ATAJOS</span>
         </button>
 
         {/* Separador */}
@@ -412,237 +603,694 @@ export function HeaderBar({
       </div>
 
       {/* --- MODAL TAMAÑO LIENZO --- */}
-      {isResizeModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-card)] border-2 border-[var(--border-color)] shadow-2xl rounded-xl p-6 w-full max-w-[420px] text-[var(--text-main)] max-h-[90vh] overflow-y-auto">
-            <h3 className="font-press-start text-[10px] text-center mb-6 tracking-wide text-[var(--accent-color)]">
-              📐 TAMAÑO DEL LIENZO
-            </h3>
+      {isResizeModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] overflow-y-auto">
+            <div className="flex items-center justify-center min-h-full p-4">
+              <div className="bg-[var(--bg-card)] border-2 border-[var(--border-color)] shadow-2xl rounded-xl p-6 w-full max-w-[420px] text-[var(--text-main)] my-auto">
+                <h3 className="font-press-start text-[13px] text-center mb-6 tracking-wide text-[var(--accent-color)]">
+                  📐 TAMAÑO DEL LIENZO
+                </h3>
 
-            {/* Presets Rápidos */}
-            <div className="mb-6">
-              <span className="text-[9px] font-bold uppercase tracking-wider block mb-3 text-[var(--text-muted)]">
-                Presets Rápidos
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: '32 x 32 (Icono)', w: 32, h: 32 },
-                  { label: '64 x 64 (Sprite)', w: 64, h: 64 },
-                  { label: '400 x 300 (Classic)', w: 400, h: 300 },
-                  { label: '800 x 600 (SVGA)', w: 800, h: 600 },
-                  { label: '1024x768 (HD Retro)', w: 1024, h: 768 },
-                  { label: '1280x720 (Moderno)', w: 1280, h: 720 },
-                ].map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => applyPresetSize(item.w, item.h)}
-                    className="px-2 py-1.5 bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-md text-[9px] font-bold hover:border-[var(--accent-color)] active:scale-95 transition-all text-center"
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Custom inputs */}
-            <div className="mb-6">
-              <span className="text-[9px] font-bold uppercase tracking-wider block mb-3 text-[var(--text-muted)]">
-                Dimensiones Personalizadas (px)
-              </span>
-              <div className="flex gap-4 items-center">
-                <div className="flex-1">
-                  <label
-                    htmlFor="custom-width-input"
-                    className="text-[8px] font-bold tracking-wide uppercase block mb-1 text-[var(--text-muted)]"
-                  >
-                    Ancho
-                  </label>
-                  <input
-                    id="custom-width-input"
-                    type="number"
-                    value={customWidth}
-                    onChange={(e) =>
-                      setCustomWidth(parseInt(e.target.value, 10) || 0)
-                    }
-                    min={16}
-                    max={3000}
-                    className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] text-[12px] font-bold font-mono p-2 rounded-md focus:border-[var(--accent-color)] outline-none"
-                  />
-                </div>
-                <div className="text-[12px] font-bold text-[var(--text-muted)] mt-4">
-                  ×
-                </div>
-                <div className="flex-1">
-                  <label
-                    htmlFor="custom-height-input"
-                    className="text-[8px] font-bold tracking-wide uppercase block mb-1 text-[var(--text-muted)]"
-                  >
-                    Alto
-                  </label>
-                  <input
-                    id="custom-height-input"
-                    type="number"
-                    value={customHeight}
-                    onChange={(e) =>
-                      setCustomHeight(parseInt(e.target.value, 10) || 0)
-                    }
-                    min={16}
-                    max={3000}
-                    className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] text-[12px] font-bold font-mono p-2 rounded-md focus:border-[var(--accent-color)] outline-none"
-                  />
-                </div>
-              </div>
-              <span className="text-[7.5px] block mt-2 text-[var(--text-muted)] italic">
-                * Nota: Redimensionar el lienzo conservará los trazos actuales
-                centrados.
-              </span>
-            </div>
-
-            {/* Botones de acción */}
-            <div className="flex gap-3 justify-end mt-4">
-              <button
-                type="button"
-                onClick={() => setIsResizeModalOpen(false)}
-                className="px-4 py-2 border border-[var(--border-color)] rounded-lg text-[9px] font-bold hover:bg-[var(--bg-primary)] active:scale-95 transition-all"
-              >
-                CANCELAR
-              </button>
-              <button
-                type="button"
-                onClick={applyResize}
-                className="px-4 py-2 bg-[var(--accent-color)] text-white border border-transparent rounded-lg text-[9px] font-bold hover:brightness-110 active:scale-95 transition-all"
-              >
-                APLICAR
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL EXPORTAR PREMIUM --- */}
-      {isExportModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-card)] border-2 border-[var(--border-color)] shadow-2xl rounded-xl p-6 w-full max-w-[550px] text-[var(--text-main)] max-h-[90vh] overflow-y-auto">
-            <h3 className="font-press-start text-[10px] text-center mb-6 tracking-wide text-[var(--accent-color)]">
-              💾 EXPORTAR LIENZO PREMIUM
-            </h3>
-
-            <div className="flex flex-col md:flex-row gap-6 mb-6">
-              {/* Vista previa */}
-              <div className="flex-1 flex flex-col items-center justify-center bg-[var(--bg-primary)] border border-[var(--border-color)] p-4 rounded-xl relative min-h-[160px]">
-                <span className="text-[8px] font-bold uppercase tracking-wider block mb-2 text-[var(--text-muted)] absolute top-2">
-                  Vista Previa
-                </span>
-                {exportPreviewUrl ? (
-                  <img
-                    src={exportPreviewUrl}
-                    alt="Vista previa"
-                    className="max-h-[150px] max-w-full object-contain shadow-md rounded-md bg-white border border-[var(--border-color)] p-1 mt-4"
-                  />
-                ) : (
-                  <span className="text-[9px] text-[var(--text-muted)] font-bold">
-                    Generando miniatura...
+                {/* Presets Rápidos */}
+                <div className="mb-6">
+                  <span className="text-[12px] font-bold uppercase tracking-wider block mb-3 text-[var(--text-muted)]">
+                    Presets Rápidos
                   </span>
-                )}
-                <span className="text-[8px] font-mono font-bold mt-2 text-[var(--text-muted)]">
-                  {canvasWidth} × {canvasHeight} px
-                </span>
-              </div>
-
-              {/* Parámetros de descarga */}
-              <div className="flex-1 flex flex-col gap-4">
-                {/* Nombre de archivo */}
-                <div>
-                  <label
-                    htmlFor="export-filename-input"
-                    className="text-[8px] font-bold tracking-wide uppercase block mb-1 text-[var(--text-muted)]"
-                  >
-                    Nombre del Archivo
-                  </label>
-                  <input
-                    id="export-filename-input"
-                    type="text"
-                    value={exportFileName}
-                    onChange={(e) => setExportFileName(e.target.value)}
-                    className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] text-[11px] font-bold p-2 rounded-md focus:border-[var(--accent-color)] outline-none"
-                    placeholder="Nombre del archivo"
-                  />
-                </div>
-
-                {/* Formato */}
-                <div>
-                  <span className="text-[8px] font-bold tracking-wide uppercase block mb-1.5 text-[var(--text-muted)]">
-                    Formato de Salida
-                  </span>
-                  <div className="flex rounded-md bg-[var(--bg-primary)] border border-[var(--border-color)] p-0.5">
-                    {(['png', 'jpeg', 'webp'] as const).map((fmt) => (
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: '32 x 32 (Icono)', w: 32, h: 32 },
+                      { label: '64 x 64 (Sprite)', w: 64, h: 64 },
+                      { label: '400 x 300 (Classic)', w: 400, h: 300 },
+                      { label: '800 x 600 (SVGA)', w: 800, h: 600 },
+                      { label: '1024x768 (HD Retro)', w: 1024, h: 768 },
+                      { label: '1280x720 (Moderno)', w: 1280, h: 720 },
+                    ].map((item) => (
                       <button
-                        key={fmt}
+                        key={item.label}
                         type="button"
-                        onClick={() => setExportFormat(fmt)}
-                        className={`flex-1 text-center py-1 text-[9px] font-bold rounded uppercase transition-all ${
-                          exportFormat === fmt
-                            ? 'bg-[var(--accent-color)] text-white shadow-sm'
-                            : 'text-[var(--text-main)] hover:bg-[var(--bg-card)]'
-                        }`}
+                        onClick={() => applyPresetSize(item.w, item.h)}
+                        className="px-3 py-2 bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-md text-[12.5px] font-bold hover:border-[var(--accent-color)] active:scale-95 transition-all text-center"
                       >
-                        {fmt === 'jpeg' ? 'JPG (Pro)' : fmt}
+                        {item.label}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Control de calidad (solo JPG/WEBP) */}
-                {exportFormat !== 'png' && (
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label
-                        htmlFor="export-quality-input"
-                        className="text-[8px] font-bold tracking-wide uppercase text-[var(--text-muted)]"
-                      >
-                        Calidad de Compresión
-                      </label>
-                      <span className="text-[9px] font-bold font-mono text-[var(--accent-color)]">
-                        {exportQuality}%
-                      </span>
+                {/* Custom inputs */}
+                <div className="mb-6">
+                  {/* Selector de Unidades */}
+                  <div className="mb-4">
+                    <span className="text-[11.5px] font-bold tracking-wide uppercase block mb-1.5 text-[var(--text-muted)]">
+                      Unidad de Medida
+                    </span>
+                    <div className="flex rounded-md bg-[var(--bg-primary)] border border-[var(--border-color)] p-0.5">
+                      {(['px', 'cm', 'in'] as const).map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          onClick={() => setUnit(u)}
+                          className={`flex-1 text-center py-1.5 text-[12.5px] font-bold rounded uppercase transition-all ${
+                            unit === u
+                              ? 'bg-[var(--accent-color)] text-white shadow-sm'
+                              : 'text-[var(--text-main)] hover:bg-[var(--bg-card)]'
+                          }`}
+                        >
+                          {u === 'in' ? 'pulgadas' : u}
+                        </button>
+                      ))}
                     </div>
-                    <input
-                      id="export-quality-input"
-                      type="range"
-                      min="10"
-                      max="100"
-                      value={exportQuality}
-                      onChange={(e) =>
-                        setExportQuality(parseInt(e.target.value, 10))
-                      }
-                      className="w-full accent-[var(--accent-color)] bg-[var(--bg-primary)] rounded-lg appearance-none h-1.5 cursor-pointer"
-                    />
                   </div>
-                )}
+
+                  <span className="text-[12px] font-bold uppercase tracking-wider block mb-3 text-[var(--text-muted)]">
+                    Dimensiones Personalizadas ({unit})
+                  </span>
+
+                  <div className="flex gap-4 items-center">
+                    <div className="flex-1">
+                      <label
+                        htmlFor="custom-width-input"
+                        className="text-[11px] font-bold tracking-wide uppercase block mb-1 text-[var(--text-muted)]"
+                      >
+                        Ancho
+                      </label>
+                      <input
+                        id="custom-width-input"
+                        type="number"
+                        step={unit === 'px' ? 1 : 0.01}
+                        value={pxToUnit(customWidth, unit)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          handleWidthChange(unitToPx(val, unit));
+                        }}
+                        min={unit === 'px' ? 16 : 0.1}
+                        max={unit === 'px' ? 3000 : 100}
+                        className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] text-[13.5px] font-bold font-mono p-2.5 rounded-md focus:border-[var(--accent-color)] outline-none"
+                      />
+                    </div>
+                    <div className="text-[14px] font-bold text-[var(--text-muted)] mt-4">
+                      ×
+                    </div>
+                    <div className="flex-1">
+                      <label
+                        htmlFor="custom-height-input"
+                        className="text-[11px] font-bold tracking-wide uppercase block mb-1 text-[var(--text-muted)]"
+                      >
+                        Alto
+                      </label>
+                      <input
+                        id="custom-height-input"
+                        type="number"
+                        step={unit === 'px' ? 1 : 0.01}
+                        value={pxToUnit(customHeight, unit)}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          handleHeightChange(unitToPx(val, unit));
+                        }}
+                        min={unit === 'px' ? 16 : 0.1}
+                        max={unit === 'px' ? 3000 : 100}
+                        className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] text-[13.5px] font-bold font-mono p-2.5 rounded-md focus:border-[var(--accent-color)] outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Bloqueo de proporciones */}
+                  <label className="flex items-center gap-2 cursor-pointer text-[13px] select-none text-[var(--text-main)] font-bold mt-3">
+                    <input
+                      type="checkbox"
+                      checked={lockRatio}
+                      onChange={(e) => setLockRatio(e.target.checked)}
+                      className="mt-0.5 accent-[var(--accent-color)] cursor-pointer"
+                    />
+                    <span>🔗 Mantener proporciones</span>
+                  </label>
+
+                  {/* Opción de redimensionamiento */}
+                  <div className="mt-4">
+                    <span className="text-[11.5px] font-bold tracking-wide uppercase block mb-2 text-[var(--text-muted)]">
+                      Modo de Redimensionamiento
+                    </span>
+                    <div className="flex flex-col gap-2 bg-[var(--bg-primary)] border border-[var(--border-color)] p-2.5 rounded-lg">
+                      {[
+                        {
+                          mode: 'center',
+                          label: 'Conservar contenido centrado',
+                          desc: 'Mantiene el dibujo en el centro',
+                        },
+                        {
+                          mode: 'top-left',
+                          label: 'Conservar en esquina superior izquierda',
+                          desc: 'Mantiene el dibujo en la coordenada (0,0)',
+                        },
+                        {
+                          mode: 'clean',
+                          label: 'Empezar con un lienzo limpio',
+                          desc: 'Borra el dibujo y crea un lienzo en blanco',
+                        },
+                      ].map((opt) => (
+                        <label
+                          key={opt.mode}
+                          className="flex items-start gap-2.5 cursor-pointer text-[12.5px] select-none text-[var(--text-main)] hover:bg-[var(--bg-card)] p-1.5 rounded-md transition-colors"
+                        >
+                          <input
+                            type="radio"
+                            name="resize-mode"
+                            checked={resizeModeLocal === opt.mode}
+                            onChange={() =>
+                              setResizeModeLocal(
+                                opt.mode as 'center' | 'top-left' | 'clean',
+                              )
+                            }
+                            className="mt-0.5 accent-[var(--accent-color)]"
+                          />
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-bold">{opt.label}</span>
+                            <span className="text-[11px] text-[var(--text-muted)]">
+                              {opt.desc}
+                            </span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Vista previa relativa */}
+                <div className="flex justify-center mb-6">
+                  <ResizePreviewCanvas
+                    canvasWidth={canvasWidth}
+                    canvasHeight={canvasHeight}
+                    customWidth={customWidth}
+                    customHeight={customHeight}
+                    resizeModeLocal={resizeModeLocal}
+                    canvasRef={canvasRef}
+                  />
+                </div>
+
+                {/* Botones de acción */}
+                <div className="flex gap-3 justify-end mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsResizeModalOpen(false)}
+                    className="px-5 py-2.5 border border-[var(--border-color)] rounded-lg text-[13px] font-bold hover:bg-[var(--bg-primary)] active:scale-95 transition-all"
+                  >
+                    CANCELAR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyResize}
+                    className="px-5 py-2.5 bg-[var(--accent-color)] text-white border border-transparent rounded-lg text-[13px] font-bold hover:brightness-110 active:scale-95 transition-all"
+                  >
+                    APLICAR
+                  </button>
+                </div>
               </div>
             </div>
+          </div>,
+          document.body,
+        )}
 
-            {/* Botones de acción */}
-            <div className="flex gap-3 justify-end">
-              <button
-                type="button"
-                onClick={() => setIsExportModalOpen(false)}
-                className="px-4 py-2 border border-[var(--border-color)] rounded-lg text-[9px] font-bold hover:bg-[var(--bg-primary)] active:scale-95 transition-all"
-              >
-                CANCELAR
-              </button>
-              <button
-                type="button"
-                onClick={triggerDownload}
-                className="px-5 py-2 bg-[var(--accent-color)] text-white border border-transparent rounded-lg text-[9px] font-bold hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5"
-              >
-                <span>🚀</span> EXPORTAR DIBUJO
-              </button>
+      {/* --- MODAL EXPORTAR PREMIUM --- */}
+      {isExportModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] overflow-y-auto">
+            <div className="flex items-center justify-center min-h-full p-4">
+              <div className="bg-[var(--bg-card)] border-2 border-[var(--border-color)] shadow-2xl rounded-xl p-6 w-full max-w-[550px] text-[var(--text-main)] my-auto">
+                <h3 className="font-press-start text-[13px] text-center mb-6 tracking-wide text-[var(--accent-color)]">
+                  💾 EXPORTAR LIENZO PREMIUM
+                </h3>
+
+                <div className="flex flex-col md:flex-row gap-6 mb-6">
+                  {/* Vista previa */}
+                  <div className="flex-1 flex flex-col items-center justify-center bg-[var(--bg-primary)] border border-[var(--border-color)] p-4 rounded-xl relative min-h-[160px]">
+                    <span className="text-[11px] font-bold uppercase tracking-wider block mb-2 text-[var(--text-muted)] absolute top-2">
+                      Vista Previa
+                    </span>
+                    {exportPreviewUrl ? (
+                      <img
+                        src={exportPreviewUrl}
+                        alt="Vista previa"
+                        className="max-h-[150px] max-w-full object-contain shadow-md rounded-md bg-white border border-[var(--border-color)] p-1 mt-4"
+                      />
+                    ) : (
+                      <span className="text-[12px] text-[var(--text-muted)] font-bold">
+                        Generando miniatura...
+                      </span>
+                    )}
+                    <span className="text-[11px] font-mono font-bold mt-2 text-[var(--text-muted)]">
+                      {canvasWidth} × {canvasHeight} px
+                    </span>
+                  </div>
+
+                  {/* Parámetros de descarga */}
+                  <div className="flex-1 flex flex-col gap-4">
+                    {/* Nombre de archivo */}
+                    <div>
+                      <label
+                        htmlFor="export-filename-input"
+                        className="text-[11px] font-bold tracking-wide uppercase block mb-1 text-[var(--text-muted)]"
+                      >
+                        Nombre del Archivo
+                      </label>
+                      <input
+                        id="export-filename-input"
+                        type="text"
+                        value={exportFileName}
+                        onChange={(e) => setExportFileName(e.target.value)}
+                        className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] text-[13px] font-bold p-2.5 rounded-md focus:border-[var(--accent-color)] outline-none"
+                        placeholder="Nombre del archivo"
+                      />
+                    </div>
+
+                    {/* Formato */}
+                    <div>
+                      <span className="text-[11px] font-bold tracking-wide uppercase block mb-1.5 text-[var(--text-muted)]">
+                        Formato de Salida
+                      </span>
+                      <div className="flex rounded-md bg-[var(--bg-primary)] border border-[var(--border-color)] p-0.5">
+                        {(['png', 'jpeg', 'webp'] as const).map((fmt) => (
+                          <button
+                            key={fmt}
+                            type="button"
+                            onClick={() => setExportFormat(fmt)}
+                            className={`flex-1 text-center py-1.5 text-[12.5px] font-bold rounded uppercase transition-all ${
+                              exportFormat === fmt
+                                ? 'bg-[var(--accent-color)] text-white shadow-sm'
+                                : 'text-[var(--text-main)] hover:bg-[var(--bg-card)]'
+                            }`}
+                          >
+                            {fmt === 'jpeg' ? 'JPG (Pro)' : fmt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Control de calidad (solo JPG/WEBP) */}
+                    {exportFormat !== 'png' && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <label
+                            htmlFor="export-quality-input"
+                            className="text-[11px] font-bold tracking-wide uppercase text-[var(--text-muted)]"
+                          >
+                            Calidad de Compresión
+                          </label>
+                          <span className="text-[12px] font-bold font-mono text-[var(--accent-color)]">
+                            {exportQuality}%
+                          </span>
+                        </div>
+                        <input
+                          id="export-quality-input"
+                          type="range"
+                          min="10"
+                          max="100"
+                          value={exportQuality}
+                          onChange={(e) =>
+                            setExportQuality(parseInt(e.target.value, 10))
+                          }
+                          className="w-full accent-[var(--accent-color)] bg-[var(--bg-primary)] rounded-lg appearance-none h-1.5 cursor-pointer"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Botones de acción */}
+                <div className="flex gap-3 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsExportModalOpen(false)}
+                    className="px-5 py-2.5 border border-[var(--border-color)] rounded-lg text-[13px] font-bold hover:bg-[var(--bg-primary)] active:scale-95 transition-all"
+                  >
+                    CANCELAR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={triggerDownload}
+                    className="px-5 py-2.5 bg-[var(--accent-color)] text-white border border-transparent rounded-lg text-[13px] font-bold hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5"
+                  >
+                    <span>🚀</span> EXPORTAR DIBUJO
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
+
+      {/* --- MODAL CONFIRMACIÓN NUEVO LIENZO --- */}
+      {isNewCanvasModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] overflow-y-auto">
+            <div className="flex items-center justify-center min-h-full p-4">
+              <div className="bg-[var(--bg-card)] border-2 border-[var(--border-color)] shadow-2xl rounded-xl p-6 w-full max-w-[420px] text-[var(--text-main)] my-auto">
+                <h3 className="font-press-start text-[13px] text-center mb-6 tracking-wide text-[var(--accent-color)] flex items-center justify-center gap-2">
+                  📄 NUEVO LIENZO
+                </h3>
+
+                <div className="mb-6 text-center">
+                  <span className="text-[20px] block mb-3">⚠️</span>
+                  <p className="text-[15.5px] font-bold leading-relaxed text-[var(--text-main)]">
+                    ¿Desea iniciar un lienzo totalmente nuevo?
+                  </p>
+                  <p className="text-[12.5px] text-[var(--text-muted)] mt-2 leading-relaxed">
+                    El dibujo actual, todas sus capas y el historial de acciones
+                    se borrarán de forma definitiva.
+                  </p>
+                </div>
+
+                {/* Presets de tamaño para el nuevo lienzo */}
+                <div className="mb-6">
+                  <span className="text-[12px] font-bold uppercase tracking-wider block mb-2.5 text-[var(--text-muted)]">
+                    Presets de tamaño
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: '32 x 32 (Icono)', w: 32, h: 32 },
+                      { label: '64 x 64 (Sprite)', w: 64, h: 64 },
+                      { label: '400 x 300 (Classic)', w: 400, h: 300 },
+                      { label: '800 x 600 (SVGA)', w: 800, h: 600 },
+                      { label: '1280x720 (Moderno)', w: 1280, h: 720 },
+                    ].map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => {
+                          setNewWidth(item.w);
+                          setNewHeight(item.h);
+                        }}
+                        className={`px-3 py-2 border rounded-md text-[12.5px] font-bold hover:border-[var(--accent-color)] active:scale-95 transition-all text-center ${
+                          newWidth === item.w && newHeight === item.h
+                            ? 'bg-[var(--accent-color)] text-white border-transparent'
+                            : 'bg-[var(--bg-primary)] border-[var(--border-color)]'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dimensiones personalizadas */}
+                <div className="mb-6">
+                  <span className="text-[12px] font-bold uppercase tracking-wider block mb-3 text-[var(--text-muted)]">
+                    Dimensiones (px)
+                  </span>
+                  <div className="flex gap-4 items-center">
+                    <div className="flex-1">
+                      <label
+                        htmlFor="new-width-input"
+                        className="text-[11px] font-bold tracking-wide uppercase block mb-1 text-[var(--text-muted)]"
+                      >
+                        Ancho
+                      </label>
+                      <input
+                        id="new-width-input"
+                        type="number"
+                        value={newWidth}
+                        onChange={(e) =>
+                          setNewWidth(parseInt(e.target.value, 10) || 0)
+                        }
+                        min={16}
+                        max={3000}
+                        className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] text-[13.5px] font-bold font-mono p-2.5 rounded-md focus:border-[var(--accent-color)] outline-none"
+                      />
+                    </div>
+                    <div className="text-[14px] font-bold text-[var(--text-muted)] mt-4">
+                      ×
+                    </div>
+                    <div className="flex-1">
+                      <label
+                        htmlFor="new-height-input"
+                        className="text-[11px] font-bold tracking-wide uppercase block mb-1 text-[var(--text-muted)]"
+                      >
+                        Alto
+                      </label>
+                      <input
+                        id="new-height-input"
+                        type="number"
+                        value={newHeight}
+                        onChange={(e) =>
+                          setNewHeight(parseInt(e.target.value, 10) || 0)
+                        }
+                        min={16}
+                        max={3000}
+                        className="w-full bg-[var(--bg-primary)] border border-[var(--border-color)] text-[13.5px] font-bold font-mono p-2.5 rounded-md focus:border-[var(--accent-color)] outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selector de Fondo */}
+                <div className="mb-6">
+                  <span className="text-[12px] font-bold uppercase tracking-wider block mb-2.5 text-[var(--text-muted)]">
+                    Fondo
+                  </span>
+                  <div className="flex gap-2">
+                    {(['white', 'black', 'transparent'] as const).map((bg) => {
+                      const labels: Record<string, string> = {
+                        white: 'Blanco ●',
+                        black: 'Negro ●',
+                        transparent: 'Transparente ◻',
+                      };
+                      return (
+                        <button
+                          key={bg}
+                          type="button"
+                          onClick={() => setNewBackground(bg)}
+                          className={`px-3 py-2 border rounded-md text-[12.5px] font-bold hover:border-[var(--accent-color)] active:scale-95 transition-all text-center flex-1 ${
+                            newBackground === bg
+                              ? 'bg-[var(--accent-color)] text-white border-transparent'
+                              : 'bg-[var(--bg-primary)] border-[var(--border-color)]'
+                          }`}
+                        >
+                          {labels[bg]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Botones de acción */}
+                <div className="flex gap-3 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsNewCanvasModalOpen(false)}
+                    className="px-5 py-2.5 border border-[var(--border-color)] rounded-lg text-[13px] font-bold hover:bg-[var(--bg-primary)] active:scale-95 transition-all"
+                  >
+                    CANCELAR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newWidth < 16 || newHeight < 16) {
+                        setStatusText('Las dimensiones mínimas son 16x16 px');
+                        return;
+                      }
+                      if (newWidth > 3000 || newHeight > 3000) {
+                        setStatusText(
+                          'Las dimensiones máximas son 3000x3000 px',
+                        );
+                        return;
+                      }
+                      useCanvasStore
+                        .getState()
+                        .setCanvasBackground(newBackground);
+                      clearCanvas(newWidth, newHeight);
+                      setIsNewCanvasModalOpen(false);
+                    }}
+                    className="px-5 py-2.5 bg-[var(--accent-color)] text-white border border-transparent rounded-lg text-[13px] font-bold hover:brightness-110 active:scale-95 transition-all"
+                  >
+                    CREAR LIENZO
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* --- MODAL ATAJOS DE TECLADO --- */}
+      {isShortcutsModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] overflow-y-auto">
+            <div className="flex items-center justify-center min-h-full p-4">
+              <div className="bg-[var(--bg-card)] border-2 border-[var(--border-color)] shadow-2xl rounded-xl p-5 w-full max-w-[500px] text-[var(--text-main)] my-auto flex flex-col">
+                {/* Title Bar */}
+                <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3 mb-4">
+                  <h3 className="font-press-start text-[13px] tracking-wide text-[var(--accent-color)] flex items-center gap-2">
+                    ⌨️ ATAJOS DE TECLADO
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setIsShortcutsModalOpen(false)}
+                    className="text-[14px] font-bold hover:text-[var(--accent-color)] transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Tabs Menu */}
+                <div className="flex border-b border-[var(--border-color)] gap-1 mb-4">
+                  {['herramientas', 'edicion', 'navegacion'].map((tab) => {
+                    const labels: Record<string, string> = {
+                      herramientas: 'HERRAMIENTAS',
+                      edicion: 'EDICIÓN',
+                      navegacion: 'NAVEGACIÓN',
+                    };
+                    const isActive = shortcutsTab === tab;
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() =>
+                          setShortcutsTab(
+                            tab as 'herramientas' | 'edicion' | 'navegacion',
+                          )
+                        }
+                        className={`px-3 py-2 text-[12px] font-bold tracking-wider rounded-t-lg transition-all ${
+                          isActive
+                            ? 'bg-[var(--bg-card)] border-x border-t border-[var(--border-color)] text-[var(--accent-color)] -mb-[1px] relative z-10'
+                            : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                        }`}
+                      >
+                        {labels[tab]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Shortcuts List */}
+                <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin flex flex-col gap-2 max-h-[260px]">
+                  {shortcutsTab === 'herramientas' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {[
+                        { key: 'P', desc: 'Lápiz (Pencil)' },
+                        { key: 'B', desc: 'Pincel (Brush)' },
+                        { key: 'E', desc: 'Borrador (Eraser)' },
+                        { key: 'F', desc: 'Relleno (Bucket Fill)' },
+                        { key: 'I', desc: 'Cuentagotas (Eyedropper)' },
+                        { key: 'T', desc: 'Texto flotante' },
+                        { key: 'L', desc: 'Línea recta' },
+                        { key: 'R', desc: 'Rectángulo' },
+                        { key: 'O', desc: 'Elipse (Círculo)' },
+                        { key: 'S', desc: 'Selección de área' },
+                        { key: 'A', desc: 'Aerógrafo (Spray)' },
+                        { key: 'C', desc: 'Curva Bézier' },
+                        { key: 'G', desc: 'Polígono libre' },
+                      ].map((s) => (
+                        <div
+                          key={s.key}
+                          className="flex justify-between items-center bg-[var(--bg-primary)] border border-[var(--border-color)] p-2 rounded-md"
+                        >
+                          <span className="text-[12px] font-bold text-[var(--text-main)]">
+                            {s.desc}
+                          </span>
+                          <kbd className="bg-[var(--bg-card)] border border-[var(--border-color)] text-[11px] font-mono px-2.5 py-1 rounded shadow-sm text-[var(--accent-color)] font-bold">
+                            {s.key}
+                          </kbd>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {shortcutsTab === 'edicion' && (
+                    <div className="flex flex-col gap-2">
+                      {[
+                        { key: 'Ctrl + Z', desc: 'Deshacer acción' },
+                        { key: 'Ctrl + Y', desc: 'Rehacer acción' },
+                        { key: 'Ctrl + S', desc: 'Guardar / Exportar imagen' },
+                        { key: 'Ctrl + C', desc: 'Copiar selección' },
+                        { key: 'Ctrl + X', desc: 'Cortar selección' },
+                        { key: 'Ctrl + V', desc: 'Pegar selección' },
+                        { key: 'Delete', desc: 'Borrar selección activa' },
+                        {
+                          key: 'X',
+                          desc: 'Intercambiar colores (Frontal/Fondo)',
+                        },
+                        { key: 'H', desc: 'Alternar Relleno de Formas' },
+                      ].map((s) => (
+                        <div
+                          key={s.key}
+                          className="flex justify-between items-center bg-[var(--bg-primary)] border border-[var(--border-color)] p-2 rounded-md"
+                        >
+                          <span className="text-[12px] font-bold text-[var(--text-main)]">
+                            {s.desc}
+                          </span>
+                          <kbd className="bg-[var(--bg-card)] border border-[var(--border-color)] text-[11px] font-mono px-2.5 py-1 rounded shadow-sm text-[var(--accent-color)] font-bold">
+                            {s.key}
+                          </kbd>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {shortcutsTab === 'navegacion' && (
+                    <div className="flex flex-col gap-2">
+                      {[
+                        {
+                          key: 'Espacio + Arrastrar',
+                          desc: 'Panear lienzo (Mano)',
+                        },
+                        { key: '+', desc: 'Acercar zoom' },
+                        { key: '-', desc: 'Alejar zoom' },
+                        {
+                          key: '0 o Ctrl + 0',
+                          desc: 'Restablecer zoom al 100%',
+                        },
+                        {
+                          key: 'Shift (Mantener)',
+                          desc: 'Líneas a 45° / Cuadrados y Círculos perfectos',
+                        },
+                        {
+                          key: 'Alt (Mantener)',
+                          desc: 'Cuentagotas temporal (Selector)',
+                        },
+                        {
+                          key: '[ / ]',
+                          desc: 'Disminuir / Aumentar pincel en 1px',
+                        },
+                        {
+                          key: 'Shift + [ / ]',
+                          desc: 'Disminuir / Aumentar pincel en 10px',
+                        },
+                        {
+                          key: 'Escape',
+                          desc: 'Cancelar operación o deseleccionar',
+                        },
+                      ].map((s) => (
+                        <div
+                          key={s.key}
+                          className="flex justify-between items-center bg-[var(--bg-primary)] border border-[var(--border-color)] p-2 rounded-md"
+                        >
+                          <span className="text-[12px] font-bold text-[var(--text-main)]">
+                            {s.desc}
+                          </span>
+                          <kbd className="bg-[var(--bg-card)] border border-[var(--border-color)] text-[11px] font-mono px-2.5 py-1 rounded shadow-sm text-[var(--accent-color)] font-bold">
+                            {s.key}
+                          </kbd>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Close Button */}
+                <div className="border-t border-[var(--border-color)] pt-3 mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsShortcutsModalOpen(false)}
+                    className="px-5 py-2.5 bg-[var(--accent-color)] text-white hover:bg-[var(--accent-color)]/90 active:scale-95 transition-all text-[13px] font-bold rounded-lg uppercase tracking-wider"
+                  >
+                    Aceptar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

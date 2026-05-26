@@ -46,6 +46,10 @@ export function floodFill(
     return;
   }
 
+  // Garantizar una tolerancia efectiva mínima de 15 si es mayor a 0 para capturar antialiasing básico.
+  // Si es exactamente 0 (pixel-art estricto), se respeta la exactitud absoluta.
+  const effectiveTolerance = tolerance === 0 ? 0 : Math.max(15, tolerance);
+
   // Usamos una cola numérica plana (X e Y alternados) para evitar reservar millones de objetos
   const queue: number[] = [startX, startY];
   const visited = new Uint8Array(width * height);
@@ -55,7 +59,7 @@ export function floodFill(
 
   // Distancia del color con tolerancia
   const matchColor = (r: number, g: number, b: number, a: number): boolean => {
-    if (tolerance === 0) {
+    if (effectiveTolerance === 0) {
       return r === targetR && g === targetG && b === targetB && a === targetA;
     }
     const dr = r - targetR;
@@ -64,9 +68,10 @@ export function floodFill(
     const da = a - targetA;
     // Distancia Euclidiana
     const diff = Math.sqrt(dr * dr + dg * dg + db * db + da * da);
-    return diff <= tolerance;
+    return diff <= effectiveTolerance;
   };
 
+  // Pasada Principal BFS
   while (head < queue.length) {
     const x = queue[head++];
     const y = queue[head++];
@@ -106,6 +111,66 @@ export function floodFill(
           }
         }
       }
+    }
+  }
+
+  // Pasada Secundaria: Border Cleanup para píxeles con suavizado (antialiased)
+  // Solo se ejecuta si la tolerancia original es mayor a 0, evitando expandir en modo pixel-art estricto.
+  if (tolerance > 0) {
+    const cleanupQueue: number[] = [];
+    const maxDiffForBorder = Math.max(30, effectiveTolerance + 10);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const vIdx = y * width + x;
+        if (visited[vIdx] === 1) {
+          const neighbors = [
+            [x + 1, y],
+            [x - 1, y],
+            [x, y + 1],
+            [x, y - 1],
+          ];
+
+          for (let i = 0; i < 4; i++) {
+            const nx = neighbors[i][0];
+            const ny = neighbors[i][1];
+
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const nvIdx = ny * width + nx;
+              if (visited[nvIdx] === 0) {
+                const nIdx = nvIdx * 4;
+                const nr = data[nIdx];
+                const ng = data[nIdx + 1];
+                const nb = data[nIdx + 2];
+                const na = data[nIdx + 3];
+
+                const dr = nr - targetR;
+                const dg = ng - targetG;
+                const db = nb - targetB;
+                const da = na - targetA;
+                const diff = Math.sqrt(dr * dr + dg * dg + db * db + da * da);
+
+                if (diff <= maxDiffForBorder) {
+                  visited[nvIdx] = 2; // Marcar como pintado por border cleanup
+                  cleanupQueue.push(nx, ny);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Pintar los píxeles del cleanup
+    for (let i = 0; i < cleanupQueue.length; i += 2) {
+      const cx = cleanupQueue[i];
+      const cy = cleanupQueue[i + 1];
+      const idx = (cy * width + cx) * 4;
+
+      data[idx] = fillR;
+      data[idx + 1] = fillG;
+      data[idx + 2] = fillB;
+      data[idx + 3] = fillA;
     }
   }
 

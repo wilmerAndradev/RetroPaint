@@ -17,6 +17,12 @@ export function useCanvas() {
   const brushStyle = useAppStore((state) => state.brushStyle);
   const setCursorCoords = useAppStore((state) => state.setCursorCoords);
   const setStatusText = useAppStore((state) => state.setStatusText);
+  const smoothing = useAppStore((state) => state.smoothing);
+  const smoothingLevel = useAppStore((state) => state.smoothingLevel);
+  const softEdges = useAppStore((state) => state.softEdges);
+  const softEdgesLevel = useAppStore((state) => state.softEdgesLevel);
+  const textFont = useAppStore((state) => state.textFont);
+  const textSize = useAppStore((state) => state.textSize);
 
   // Canvas store states
   const width = useCanvasStore((state) => state.width);
@@ -69,6 +75,10 @@ export function useCanvas() {
   // Portapapeles global de la sesión (persiste en la sesión del hook)
   const clipboardImageRef = useRef<ImageData | null>(null);
   const clipboardSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  // Referencias adicionales para estabilización y recuperaciones de selección
+  const originalImageDataBeforeMoveRef = useRef<ImageData | null>(null);
+  const lastStabilizedCoordsRef = useRef<{ x: number; y: number } | null>(null);
 
   const getOffscreenCanvas = useCallback((w: number, h: number) => {
     if (!offscreenCanvasRef.current) {
@@ -159,13 +169,19 @@ export function useCanvas() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Pintar la selección en su posición actual de forma definitiva
+    // 1. Restaurar el lienzo al estado limpio con el hueco vacío (para borrar cualquier previsualización)
+    if (savedImageDataRef.current) {
+      ctx.putImageData(savedImageDataRef.current, 0, 0);
+    }
+
+    // 2. Pintar la selección en su posición final de forma definitiva
     const pos = selectionOriginalPosRef.current;
+    const rect = selectionRectRef.current;
 
     // Crear canvas temporal para dibujar el ImageData
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = selectionRectRef.current.w;
-    tempCanvas.height = selectionRectRef.current.h;
+    tempCanvas.width = rect.w;
+    tempCanvas.height = rect.h;
     const tempCtx = tempCanvas.getContext('2d');
     if (tempCtx) {
       tempCtx.putImageData(selectionImageRef.current, 0, 0);
@@ -176,6 +192,11 @@ export function useCanvas() {
     selectionRectRef.current = null;
     selectionImageRef.current = null;
     hasCutOrMovedRef.current = false;
+    originalImageDataBeforeMoveRef.current = null;
+    savedImageDataRef.current = null;
+
+    // Limpiar recuadro de hormigas marchantes en Zustand
+    useCanvasStore.getState().setActiveSelection(null);
 
     saveHistory(canvas);
     setStatusText('Selección consolidada en el lienzo');
@@ -321,7 +342,6 @@ export function useCanvas() {
     },
     [],
   );
-
   // --- MÉTODOS DE SELECCIÓN EXPUESTOS ---
 
   const deleteSelection = useCallback(() => {
@@ -331,20 +351,19 @@ export function useCanvas() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Rellenar la zona original con blanco (si no se había borrado ya al arrastrar)
-    if (!hasCutOrMovedRef.current) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(
-        selectionOriginalPosRef.current.x,
-        selectionOriginalPosRef.current.y,
-        selectionRectRef.current.w,
-        selectionRectRef.current.h,
-      );
+    // Restaurar el lienzo con el hueco blanco
+    if (savedImageDataRef.current) {
+      ctx.putImageData(savedImageDataRef.current, 0, 0);
     }
 
     selectionRectRef.current = null;
     selectionImageRef.current = null;
     hasCutOrMovedRef.current = false;
+    originalImageDataBeforeMoveRef.current = null;
+    savedImageDataRef.current = null;
+
+    useCanvasStore.getState().setActiveSelection(null);
+
     saveHistory(canvas);
     setStatusText('Selección eliminada');
   }, [saveHistory, setStatusText]);
@@ -370,24 +389,25 @@ export function useCanvas() {
       return;
     }
 
-    // Copiar primero
     copySelection();
 
-    // Rellenar hueco con blanco
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(
-        selectionOriginalPosRef.current.x,
-        selectionOriginalPosRef.current.y,
-        selectionRectRef.current.w,
-        selectionRectRef.current.h,
-      );
+    // El lienzo ya tiene el hueco blanco en savedImageDataRef.current.
+    // Así que simplemente vaciamos la selección flotante, restauramos el hueco y guardamos historia!
+    if (savedImageDataRef.current) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.putImageData(savedImageDataRef.current, 0, 0);
+      }
     }
 
     selectionRectRef.current = null;
     selectionImageRef.current = null;
     hasCutOrMovedRef.current = false;
+    originalImageDataBeforeMoveRef.current = null;
+    savedImageDataRef.current = null;
+
+    useCanvasStore.getState().setActiveSelection(null);
+
     saveHistory(canvas);
     setStatusText('Área seleccionada cortada al portapapeles');
   }, [copySelection, saveHistory, setStatusText]);
@@ -411,16 +431,13 @@ export function useCanvas() {
     selectionOriginalPosRef.current = { x: 10, y: 10 };
     hasCutOrMovedRef.current = true; // Ya es una copia flotante pegada
 
-    // Dibujar de forma flotante en el lienzo para previsualización
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      // Guardar el estado actual del lienzo (antes de pegar) en savedImageDataRef
-      savedImageDataRef.current = ctx.getImageData(
-        0,
-        0,
-        canvas.width,
-        canvas.height,
-      );
+      // Guardar el estado original del lienzo (para Escape)
+      originalImageDataBeforeMoveRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      // Guardar el lienzo antes del pegado flotante (que no tiene hueco porque es un paste)
+      savedImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = w;
@@ -430,14 +447,9 @@ export function useCanvas() {
         tempCtx.putImageData(clipboardImageRef.current, 0, 0);
         ctx.drawImage(tempCanvas, 10, 10);
       }
-      // Dibujar caja discontinua
-      ctx.save();
-      ctx.strokeStyle = '#000000';
-      ctx.setLineDash([4, 4]);
-      ctx.strokeRect(10, 10, w, h);
-      ctx.restore();
     }
 
+    useCanvasStore.getState().setActiveSelection({ x: 10, y: 10, width: w, height: h });
     useAppStore.getState().setActiveTool('select');
     setStatusText('Selección pegada en el lienzo. Puedes moverla ahora.');
   }, [consolidateSelection, setStatusText]);
@@ -452,17 +464,45 @@ export function useCanvas() {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      ctx.save();
-      ctx.fillStyle = fgColor;
-      ctx.font = `${brushSize * 4 + 10}px "Press Start 2P"`;
-      ctx.textBaseline = 'top';
-      ctx.fillText(text, x, y);
-      ctx.restore();
+      // Extraer la familia tipográfica primaria para asegurar su carga robusta en el navegador
+      const primaryFont = textFont.split(',')[0].trim().replace(/['"]/g, '');
+      const fontSpec = `${textSize}px "${primaryFont}"`;
 
-      saveHistory(canvas);
-      setStatusText('Texto insertado en el lienzo');
+      const executeDraw = () => {
+        ctx.save();
+        ctx.fillStyle = fgColor;
+        ctx.font = `${textSize}px ${textFont}`;
+        ctx.textBaseline = 'top';
+        
+        // Dibujar texto línea por línea para soportar saltos de línea (multilínea)
+        const lines = text.split('\n');
+        const lineHeight = textSize * 1.2;
+        lines.forEach((line, index) => {
+          ctx.fillText(line, x, y + index * lineHeight);
+        });
+        
+        ctx.restore();
+
+        saveHistory(canvas);
+        setStatusText('Texto insertado en el lienzo');
+      };
+
+      if (document.fonts) {
+        setStatusText('Cargando tipografía de Google Fonts...');
+        document.fonts
+          .load(fontSpec)
+          .then(() => {
+            executeDraw();
+          })
+          .catch((err) => {
+            console.warn('Error al precargar fuente, dibujando con fallback:', err);
+            executeDraw();
+          });
+      } else {
+        executeDraw();
+      }
     },
-    [fgColor, brushSize, saveHistory, setStatusText],
+    [fgColor, textFont, textSize, saveHistory, setStatusText],
   );
 
   // --- EVENTOS DEL LIENZO ---
@@ -501,24 +541,6 @@ export function useCanvas() {
         ) {
           isDraggingSelectionRef.current = true;
           selectionDragStartRef.current = coords;
-
-          // Si es el primer arrastre de la selección recién cortada/creada,
-          // rellenamos su ubicación original de fondo con blanco
-          if (!hasCutOrMovedRef.current) {
-            ctx.save();
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(pos.x, pos.y, rect.w, rect.h);
-            ctx.restore();
-            hasCutOrMovedRef.current = true;
-          }
-
-          // Guardar el lienzo con el hueco vacío en savedImageDataRef
-          savedImageDataRef.current = ctx.getImageData(
-            0,
-            0,
-            canvas.width,
-            canvas.height,
-          );
           return;
         }
 
@@ -599,6 +621,7 @@ export function useCanvas() {
       isDrawingRef.current = true;
       startCoordsRef.current = coords;
       lastCoordsRef.current = coords;
+      lastStabilizedCoordsRef.current = coords;
 
       savedImageDataRef.current = ctx.getImageData(
         0,
@@ -756,7 +779,7 @@ export function useCanvas() {
         const dx = coords.x - dragStart.x;
         const dy = coords.y - dragStart.y;
 
-        // Restaurar fondo con hueco vacío
+        // 1. Restaurar fondo con hueco vacío
         if (savedImageDataRef.current) {
           ctx.putImageData(savedImageDataRef.current, 0, 0);
         }
@@ -764,7 +787,7 @@ export function useCanvas() {
         const newX = selectionOriginalPosRef.current.x + dx;
         const newY = selectionOriginalPosRef.current.y + dy;
 
-        // Dibujar ImageData en canvas virtual
+        // 2. Dibujar ImageData en canvas virtual
         if (selectionImageRef.current) {
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = rect.w;
@@ -776,12 +799,10 @@ export function useCanvas() {
           }
         }
 
-        // Dibujar caja discontinua en la nueva posición
-        ctx.save();
-        ctx.strokeStyle = '#000000';
-        ctx.setLineDash([4, 4]);
-        ctx.strokeRect(newX, newY, rect.w, rect.h);
-        ctx.restore();
+        // 3. Sincronizar recuadro de hormigas marchantes en Zustand
+        useCanvasStore
+          .getState()
+          .setActiveSelection({ x: newX, y: newY, width: rect.w, height: rect.h });
         return;
       }
 
@@ -856,9 +877,41 @@ export function useCanvas() {
         activeTool === 'eraser' ||
         activeTool === 'spray'
       ) {
+        // Estabilización de coordenadas si el suavizado está activo
+        let activeCoords = coords;
+        if (smoothing) {
+          const lastStab = lastStabilizedCoordsRef.current || coords;
+          
+          // 1. Aplicar correa virtual (leash) de precisión (0-16px de radio)
+          const leashRadius = smoothingLevel * 0.8;
+          const dx = coords.x - lastStab.x;
+          const dy = coords.y - lastStab.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          let targetX = coords.x;
+          let targetY = coords.y;
+          
+          if (distance < leashRadius) {
+            targetX = lastStab.x;
+            targetY = lastStab.y;
+          } else {
+            const ratio = (distance - leashRadius) / distance;
+            targetX = lastStab.x + dx * ratio;
+            targetY = lastStab.y + dy * ratio;
+          }
+          
+          // 2. Promedio móvil exponencial (EMA) sobre el objetivo para fluidez extrema
+          const weight = 1 / (1 + smoothingLevel * 1.2);
+          const stabX = lastStab.x + (targetX - lastStab.x) * weight;
+          const stabY = lastStab.y + (targetY - lastStab.y) * weight;
+          
+          activeCoords = { x: stabX, y: stabY };
+          lastStabilizedCoordsRef.current = activeCoords;
+        }
+
         if (style === 'spray') {
-          const dx = coords.x - lastCoords.x;
-          const dy = coords.y - lastCoords.y;
+          const dx = activeCoords.x - lastCoords.x;
+          const dy = activeCoords.y - lastCoords.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
           const stepSize = Math.max(3, size);
           const steps = Math.floor(distance / stepSize);
@@ -871,21 +924,21 @@ export function useCanvas() {
               applySpray(ctx, ix, iy, color, size);
             }
           } else {
-            applySpray(ctx, coords.x, coords.y, color, size);
+            applySpray(ctx, activeCoords.x, activeCoords.y, color, size);
           }
         } else if (style === 'pixel' || style === 'chalk') {
           drawLine(
             ctx,
             lastCoords.x,
             lastCoords.y,
-            coords.x,
-            coords.y,
+            activeCoords.x,
+            activeCoords.y,
             color,
             size,
             style,
           );
         } else {
-          currentStrokePointsRef.current.push(coords);
+          currentStrokePointsRef.current.push(activeCoords);
 
           if (savedImageDataRef.current) {
             ctx.putImageData(savedImageDataRef.current, 0, 0);
@@ -896,20 +949,156 @@ export function useCanvas() {
           if (offCtx) {
             offCtx.clearRect(0, 0, canvas.width, canvas.height);
 
-            offCtx.strokeStyle = color;
             offCtx.fillStyle = color;
-            offCtx.lineCap = activeTool === 'pencil' ? 'square' : 'round';
+            offCtx.strokeStyle = color;
+            offCtx.lineCap = 'round';
             offCtx.lineJoin = 'round';
-            offCtx.lineWidth = style === 'watercolor' ? size * 3 : size;
 
-            offCtx.beginPath();
+            // Configurar filtro de Bordes Suaves (Feathering) en el canvas virtual
+            if (softEdges) {
+              offCtx.filter = `blur(${softEdgesLevel}px)`;
+            } else {
+              offCtx.filter = 'none';
+            }
+
             const points = currentStrokePointsRef.current;
             if (points.length > 0) {
-              offCtx.moveTo(points[0].x, points[0].y);
-              for (let i = 1; i < points.length; i++) {
-                offCtx.lineTo(points[i].x, points[i].y);
+              if (points.length === 1) {
+                // Dibujar un solo círculo inicial
+                offCtx.beginPath();
+                offCtx.arc(points[0].x, points[0].y, size / 2, 0, Math.PI * 2);
+                offCtx.fill();
+              } else {
+                // Array para guardar los tamaños de cada punto
+                const pointSizes = new Array(points.length);
+                const isTaperedBrush = activeTool === 'brush' && (style === 'normal' || style === 'watercolor');
+
+                if (isTaperedBrush) {
+                  // Calcular velocidad entre puntos
+                  const speeds = new Array(points.length).fill(0);
+                  for (let i = 1; i < points.length; i++) {
+                    const dx = points[i].x - points[i - 1].x;
+                    const dy = points[i].y - points[i - 1].y;
+                    speeds[i] = Math.sqrt(dx * dx + dy * dy);
+                  }
+                  
+                  // Suavizar la velocidad (filtro EMA)
+                  let avgSpeed = 0;
+                  for (let i = 0; i < points.length; i++) {
+                    avgSpeed = avgSpeed * 0.8 + speeds[i] * 0.2;
+                    
+                    // Modulación de grosor por velocidad (más rápido = más fino)
+                    const speedFactor = Math.max(0.35, Math.min(1.0, 1.0 - (avgSpeed / 25)));
+                    let targetSize = size * speedFactor;
+                    
+                    // Taper-In (cónica de inicio) en los primeros 12 puntos
+                    const startDistance = i;
+                    if (startDistance < 12) {
+                      const ratio = startDistance / 12;
+                      targetSize *= (0.15 + 0.85 * ratio);
+                    }
+                    
+                    // Taper-Out (cónica de fin/punta activa) en los últimos 12 puntos
+                    const pointsFromEnd = points.length - 1 - i;
+                    if (pointsFromEnd < 12) {
+                      const ratio = pointsFromEnd / 12;
+                      targetSize *= (0.15 + 0.85 * ratio);
+                    }
+                    
+                    pointSizes[i] = Math.max(1, targetSize);
+                  }
+                  pointSizes[0] = pointSizes[1] ? pointSizes[1] * 0.3 : size * 0.15;
+                } else {
+                  // Grosor uniforme para otros pinceles o lápiz, garantizando extremos redondeados perfectos
+                  pointSizes.fill(size);
+                }
+
+                // Dibujar los dabs interpolados
+                const drawDab = (x: number, y: number, rSize: number) => {
+                  offCtx.beginPath();
+                  offCtx.arc(x, y, rSize / 2, 0, Math.PI * 2);
+                  offCtx.fill();
+                };
+                
+                drawDab(points[0].x, points[0].y, pointSizes[0]);
+                
+                // Interpolación lineal entre dabs
+                const interpolateDabs = (
+                  x1: number, y1: number, s1: number,
+                  x2: number, y2: number, s2: number
+                ) => {
+                  const dx = x2 - x1;
+                  const dy = y2 - y1;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  const spacing = Math.max(0.4, Math.min(s1, s2) * 0.05); // Espaciado ultra-denso del 5% del tamaño para fluidez absoluta
+                  
+                  if (dist > spacing) {
+                    const steps = Math.ceil(dist / spacing);
+                    for (let step = 1; step <= steps; step++) {
+                      const t = step / steps;
+                      const ix = x1 + dx * t;
+                      const iy = y1 + dy * t;
+                      const isize = s1 + (s2 - s1) * t;
+                      drawDab(ix, iy, isize);
+                    }
+                  } else {
+                    drawDab(x2, y2, s2);
+                  }
+                };
+
+                let currentX = points[0].x;
+                let currentY = points[0].y;
+                
+                for (let i = 1; i < points.length - 1; i++) {
+                  const p0 = points[i - 1];
+                  const p1 = points[i];
+                  const p2 = points[i + 1];
+                  
+                  const s0 = pointSizes[i - 1];
+                  const s1 = pointSizes[i];
+                  const s2 = pointSizes[i + 1];
+                  
+                  const startX = i === 1 ? p0.x : (p0.x + p1.x) / 2;
+                  const startY = i === 1 ? p0.y : (p0.y + p1.y) / 2;
+                  
+                  const endX = (p1.x + p2.x) / 2;
+                  const endY = (p1.y + p2.y) / 2;
+                  
+                  const startS = i === 1 ? s0 : (s0 + s1) / 2;
+                  const endS = (s1 + s2) / 2;
+                  
+                  const segmentLen = Math.sqrt((endX - startX) * (endX - startX) + (endY - startY) * (endY - startY));
+                  const stepSize = Math.max(0.4, Math.min(startS, endS) * 0.05);
+                  const curveSteps = Math.max(5, Math.ceil(segmentLen / stepSize));
+                  
+                  let prevCurveX = startX;
+                  let prevCurveY = startY;
+                  let prevCurveS = startS;
+                  
+                  for (let step = 0; step <= curveSteps; step++) {
+                    const t = step / curveSteps;
+                    const mt = 1 - t;
+                    const bx = mt * mt * startX + 2 * mt * t * p1.x + t * t * endX;
+                    const by = mt * mt * startY + 2 * mt * t * p1.y + t * t * endY;
+                    const bs = startS + (endS - startS) * t;
+                    
+                    interpolateDabs(prevCurveX, prevCurveY, prevCurveS, bx, by, bs);
+                    
+                    prevCurveX = bx;
+                    prevCurveY = by;
+                    prevCurveS = bs;
+                  }
+                  
+                  currentX = endX;
+                  currentY = endY;
+                }
+                
+                const lastIdx = points.length - 1;
+                interpolateDabs(
+                  currentX, currentY, pointSizes[lastIdx - 1],
+                  points[lastIdx].x, points[lastIdx].y, pointSizes[lastIdx]
+                );
               }
-              offCtx.stroke();
             }
 
             ctx.save();
@@ -918,7 +1107,7 @@ export function useCanvas() {
             ctx.restore();
           }
         }
-        lastCoordsRef.current = coords;
+        lastCoordsRef.current = activeCoords;
       } else {
         // Formas geométricas
         if (savedImageDataRef.current) {
@@ -1028,6 +1217,10 @@ export function useCanvas() {
       applySpray,
       getSnappedCoords,
       getOffscreenCanvas,
+      softEdgesLevel,
+      softEdges,
+      smoothingLevel,
+      smoothing,
     ],
   );
 
@@ -1067,33 +1260,27 @@ export function useCanvas() {
         selectionOriginalPosRef.current = { x: newX, y: newY };
         selectionRectRef.current = { ...rect, x: newX, y: newY };
 
-        // Actualizar la instantánea del lienzo antes de dibujar la caja discontinua
+        // 1. Restaurar fondo con hueco vacío
         if (savedImageDataRef.current) {
           ctx.putImageData(savedImageDataRef.current, 0, 0);
-          if (selectionImageRef.current) {
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = rect.w;
-            tempCanvas.height = rect.h;
-            const tempCtx = tempCanvas.getContext('2d');
-            if (tempCtx) {
-              tempCtx.putImageData(selectionImageRef.current, 0, 0);
-              ctx.drawImage(tempCanvas, newX, newY);
-            }
-          }
-          savedImageDataRef.current = ctx.getImageData(
-            0,
-            0,
-            canvas.width,
-            canvas.height,
-          );
         }
 
-        // Redibujar la caja de selección activa
-        ctx.save();
-        ctx.strokeStyle = '#000000';
-        ctx.setLineDash([4, 4]);
-        ctx.strokeRect(newX, newY, rect.w, rect.h);
-        ctx.restore();
+        // 2. Dibujar ImageData en su nueva posición definitiva flotante
+        if (selectionImageRef.current) {
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = rect.w;
+          tempCanvas.height = rect.h;
+          const tempCtx = tempCanvas.getContext('2d');
+          if (tempCtx) {
+            tempCtx.putImageData(selectionImageRef.current, 0, 0);
+            ctx.drawImage(tempCanvas, newX, newY);
+          }
+        }
+
+        // 3. Sincronizar recuadro de hormigas marchantes en Zustand
+        useCanvasStore
+          .getState()
+          .setActiveSelection({ x: newX, y: newY, width: rect.w, height: rect.h });
         return;
       }
 
@@ -1145,18 +1332,40 @@ export function useCanvas() {
           selectionOriginalPosRef.current = { x, y };
           hasCutOrMovedRef.current = false;
 
-          // Extraer porción de imagen del lienzo original (antes del recuadro discontinuo)
+          // 1. Restaurar lienzo original antes del dibujo de previsualización
           if (savedImageDataRef.current) {
             ctx.putImageData(savedImageDataRef.current, 0, 0);
           }
+
+          // 2. Guardar lienzo original completo (antes de recortar el hueco)
+          originalImageDataBeforeMoveRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          // 3. Extraer la porción seleccionada
           selectionImageRef.current = ctx.getImageData(x, y, w, h);
 
-          // Redibujar la caja discontinua
+          // 4. Crear el hueco vacío en el lienzo (rellenar con blanco)
           ctx.save();
-          ctx.strokeStyle = '#000000';
-          ctx.setLineDash([4, 4]);
-          ctx.strokeRect(x, y, w, h);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(x, y, w, h);
           ctx.restore();
+
+          // 5. Guardar el lienzo con el hueco en savedImageDataRef
+          savedImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          // 6. Dibujar la selección en su posición actual de previsualización flotante
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = w;
+          tempCanvas.height = h;
+          const tempCtx = tempCanvas.getContext('2d');
+          if (tempCtx) {
+            tempCtx.putImageData(selectionImageRef.current, 0, 0);
+            ctx.drawImage(tempCanvas, x, y);
+          }
+
+          // 7. Sincronizar recuadro de hormigas marchantes en Zustand
+          useCanvasStore
+            .getState()
+            .setActiveSelection({ x, y, width: w, height: h });
 
           setStatusText(
             `Área seleccionada: ${w}x${h}px. Puedes arrastrar para moverla.`,
@@ -1167,6 +1376,7 @@ export function useCanvas() {
           if (savedImageDataRef.current) {
             ctx.putImageData(savedImageDataRef.current, 0, 0);
           }
+          useCanvasStore.getState().setActiveSelection(null);
         }
         return;
       }
@@ -1271,6 +1481,251 @@ export function useCanvas() {
     }
   }, [redo, setStatusText, consolidateSelection]);
 
+  // Consolidar polígono activo si existe
+  const consolidatePolygon = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const pts = polygonPointsRef.current;
+    if (pts.length > 2) {
+      if (savedImageDataRef.current) {
+        ctx.putImageData(savedImageDataRef.current, 0, 0);
+      }
+
+      ctx.save();
+      ctx.strokeStyle = drawButtonRef.current === 2 ? bgColor : fgColor;
+      ctx.fillStyle = drawButtonRef.current === 2 ? fgColor : bgColor;
+      ctx.lineWidth = brushSize;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      ctx.closePath();
+
+      if (fillShapes) {
+        ctx.fill();
+      }
+      ctx.stroke();
+      ctx.restore();
+      saveHistory(canvas);
+      setStatusText('Polígono consolidado');
+    } else {
+      if (savedImageDataRef.current) {
+        ctx.putImageData(savedImageDataRef.current, 0, 0);
+      }
+    }
+    polygonPointsRef.current = [];
+    savedImageDataRef.current = null;
+  }, [brushSize, fgColor, bgColor, fillShapes, saveHistory, setStatusText]);
+
+  const onDoubleClick = useCallback(() => {
+    if (activeTool === 'polygon') {
+      consolidatePolygon();
+    }
+  }, [consolidatePolygon, activeTool]);
+
+  const selectAll = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    consolidateSelection();
+
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // 1. Guardar la imagen original antes de recortar (para Escape/Cancel)
+    originalImageDataBeforeMoveRef.current = ctx.getImageData(0, 0, w, h);
+
+    selectionRectRef.current = { x: 0, y: 0, w, h };
+    selectionOriginalPosRef.current = { x: 0, y: 0 };
+    hasCutOrMovedRef.current = false;
+    selectionImageRef.current = ctx.getImageData(0, 0, w, h);
+
+    // 2. Recortar la selección (rellenar el lienzo original con blanco)
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+
+    // 3. Guardar el lienzo con el hueco en savedImageDataRef
+    savedImageDataRef.current = ctx.getImageData(0, 0, w, h);
+
+    // 4. Dibujar la selección en previsualización flotante
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = w;
+    tempCanvas.height = h;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (tempCtx) {
+      tempCtx.putImageData(selectionImageRef.current, 0, 0);
+      ctx.drawImage(tempCanvas, 0, 0);
+    }
+
+    useCanvasStore
+      .getState()
+      .setActiveSelection({ x: 0, y: 0, width: w, height: h });
+    useAppStore.getState().setActiveTool('select');
+    setStatusText(`Lienzo completo seleccionado (${w}x${h}px)`);
+  }, [consolidateSelection, setStatusText]);
+
+  const deselect = useCallback(() => {
+    consolidateSelection();
+  }, [consolidateSelection]);
+
+  const cancelActiveOperation = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // 1. Cancelar selección activa flotante
+    if (selectionRectRef.current) {
+      if (originalImageDataBeforeMoveRef.current) {
+        ctx.putImageData(originalImageDataBeforeMoveRef.current, 0, 0);
+      } else if (savedImageDataRef.current) {
+        ctx.putImageData(savedImageDataRef.current, 0, 0);
+      }
+      selectionRectRef.current = null;
+      selectionImageRef.current = null;
+      hasCutOrMovedRef.current = false;
+      originalImageDataBeforeMoveRef.current = null;
+      useCanvasStore.getState().setActiveSelection(null);
+      setStatusText('Selección cancelada y restaurada');
+      return;
+    }
+
+    // 2. Cancelar dibujo de polígono interactivo
+    if (activeTool === 'polygon' && polygonPointsRef.current.length > 0) {
+      if (savedImageDataRef.current) {
+        ctx.putImageData(savedImageDataRef.current, 0, 0);
+      }
+      polygonPointsRef.current = [];
+      savedImageDataRef.current = null;
+      setStatusText('Dibujo de polígono cancelado');
+      return;
+    }
+
+    // 3. Cancelar curva Bézier en progreso
+    if (activeTool === 'bezier' && bezierStepRef.current > 0) {
+      if (savedImageDataRef.current) {
+        ctx.putImageData(savedImageDataRef.current, 0, 0);
+      }
+      bezierStepRef.current = 0;
+      savedImageDataRef.current = null;
+      setStatusText('Curva Bézier cancelada');
+      return;
+    }
+  }, [activeTool, setStatusText]);
+
+  const openImageFile = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp,image/gif';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+
+          consolidateSelection();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          saveHistory(canvas);
+          setStatusText(`Imagen "${file.name}" cargada correctamente`);
+        };
+        img.src = ev.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  }, [saveHistory, setStatusText, consolidateSelection]);
+
+  const pasteFromClipboard = useCallback(async () => {
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const clipboardItem of clipboardItems) {
+        for (const type of clipboardItem.types) {
+          if (type.startsWith('image/')) {
+            const blob = await clipboardItem.getType(type);
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => {
+              const canvas = canvasRef.current;
+              if (!canvas) return;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return;
+
+              consolidateSelection();
+
+              const w = img.width;
+              const h = img.height;
+              const canvasWidth = canvas.width;
+              const canvasHeight = canvas.height;
+
+              const x = Math.round((canvasWidth - w) / 2);
+              const y = Math.round((canvasHeight - h) / 2);
+
+              selectionRectRef.current = { x, y, w, h };
+              selectionOriginalPosRef.current = { x, y };
+              hasCutOrMovedRef.current = true;
+
+              savedImageDataRef.current = ctx.getImageData(
+                0,
+                0,
+                canvasWidth,
+                canvasHeight,
+              );
+              originalImageDataBeforeMoveRef.current = ctx.getImageData(
+                0,
+                0,
+                canvasWidth,
+                canvasHeight,
+              );
+
+              const tempCanvas = document.createElement('canvas');
+              tempCanvas.width = w;
+              tempCanvas.height = h;
+              const tempCtx = tempCanvas.getContext('2d');
+              if (!tempCtx) return;
+              tempCtx.drawImage(img, 0, 0);
+              selectionImageRef.current = tempCtx.getImageData(0, 0, w, h);
+
+              ctx.drawImage(tempCanvas, x, y);
+
+              useAppStore.getState().setActiveTool('select');
+              useCanvasStore
+                .getState()
+                .setActiveSelection({ x, y, width: w, height: h });
+
+              setStatusText('Imagen pegada desde el portapapeles del sistema');
+              URL.revokeObjectURL(url);
+            };
+            img.src = url;
+            return;
+          }
+        }
+      }
+      pasteSelection();
+    } catch {
+      pasteSelection();
+    }
+  }, [setStatusText, consolidateSelection, pasteSelection]);
+
   return {
     canvasRef,
     onMouseDown,
@@ -1293,5 +1748,13 @@ export function useCanvas() {
     // Método de texto WYSIWYG
     drawTextOnCanvas,
     loadDrawingOnCanvas,
+
+    // Métodos avanzados recuperados
+    onDoubleClick,
+    cancelActiveOperation,
+    selectAll,
+    deselect,
+    openImageFile,
+    pasteFromClipboard,
   };
 }

@@ -336,6 +336,22 @@ export function ToolButton({ tool, label, shortcut }: ToolButtonProps) {
             />
           </svg>
         );
+      case 'move':
+        return (
+          <svg
+            className="w-4 h-4 flex-shrink-0"
+            viewBox="0 0 16 16"
+            fill="none"
+            role="img"
+            aria-label={label}
+          >
+            <title>{label}</title>
+            <path
+              d="M8 1 L11 4 H9 V7 H12 V5 L15 8 L12 11 V9 H9 V12 H11 L8 15 L5 12 H7 V9 H4 V11 L1 8 L4 5 V7 H7 V4 H5 Z"
+              fill={strokeColor}
+            />
+          </svg>
+        );
       default:
         return <span className="text-[10px] font-bold">?</span>;
     }
@@ -344,10 +360,10 @@ export function ToolButton({ tool, label, shortcut }: ToolButtonProps) {
   const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (isActive) return;
     gsap.to(e.currentTarget, {
-      scale: 1.04,
-      x: 4,
-      duration: 0.15,
-      ease: 'power2.out',
+      scale: 1.03,
+      x: 3,
+      duration: 0.08, // UI/UX Pro Max: micro-interactions 50-100ms
+      ease: 'cubic-bezier(0.16, 1, 0.3, 1)', // UI/UX Pro Max: premium easing
     });
   };
 
@@ -355,8 +371,8 @@ export function ToolButton({ tool, label, shortcut }: ToolButtonProps) {
     gsap.to(e.currentTarget, {
       scale: 1,
       x: 0,
-      duration: 0.15,
-      ease: 'power2.out',
+      duration: 0.08,
+      ease: 'cubic-bezier(0.16, 1, 0.3, 1)',
     });
   };
 
@@ -368,7 +384,7 @@ export function ToolButton({ tool, label, shortcut }: ToolButtonProps) {
       onMouseLeave={handleMouseLeave}
       className={`w-full flex items-center gap-3 px-3 h-[36px] min-h-[36px] select-none border transition-all cursor-default text-left rounded-md ${
         isActive
-          ? 'bg-[var(--bg-card)] border-[var(--accent-color)] text-[var(--accent-color)] shadow-sm font-bold'
+          ? 'bg-[var(--bg-card)] border-[var(--accent-color)] text-[var(--accent-color)] shadow-sm font-bold dark:pixel-glow-accent'
           : 'bg-transparent border-transparent hover:bg-[var(--bg-card)]/50 text-[var(--text-main)]'
       }`}
       title={`${label} (${shortcut})`}
@@ -377,7 +393,8 @@ export function ToolButton({ tool, label, shortcut }: ToolButtonProps) {
       <div className="w-5 h-5 flex items-center justify-center">
         {renderPixelIcon()}
       </div>
-      <span className="text-[9px] font-bold tracking-widest font-sans uppercase">
+      {/* UI/UX Pro Max: VT323 for pixel-art body text in tool labels */}
+      <span className="text-[13px] tracking-wide font-vt323 uppercase leading-none">
         {label === 'Curva Bezier'
           ? 'CURVA'
           : label === 'Bote de Pintura'

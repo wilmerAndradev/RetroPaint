@@ -17,6 +17,13 @@ export const TOOLS_LIST: ToolDefinition[] = [
     icon: '⬚',
   },
   {
+    type: 'move',
+    label: 'Mover',
+    description: 'Mueve la capa activa o una selección flotante',
+    shortcut: 'V',
+    icon: '✥',
+  },
+  {
     type: 'eraser',
     label: 'Borrador',
     description: 'Borra partes del dibujo usando el color secundario',

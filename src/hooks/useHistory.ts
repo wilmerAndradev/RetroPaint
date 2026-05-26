@@ -8,11 +8,11 @@ export function useHistory() {
   const historyIndex = useCanvasStore((state) => state.historyIndex);
   const history = useCanvasStore((state) => state.history);
 
-  // Guarda una captura de pantalla del canvas
+  // Guarda una captura de pantalla del canvas con una etiqueta descriptiva
   const saveHistory = useCallback(
-    (canvas: HTMLCanvasElement) => {
+    (canvas: HTMLCanvasElement, label = 'Acción') => {
       const dataUrl = canvas.toDataURL();
-      pushHistory(dataUrl);
+      pushHistory(dataUrl, label);
     },
     [pushHistory],
   );
@@ -27,12 +27,26 @@ export function useHistory() {
       img.onload = () => {
         // Limpiar lienzo
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        // Rellenar con color transparente / blanco de fondo (el dibujo está encima)
+        // Dibujar estado
         ctx.drawImage(img, 0, 0);
       };
       img.src = dataUrl;
     },
     [],
+  );
+
+  // Salta directamente a un índice específico en la historia (MVP-5)
+  const jumpToHistoryIndex = useCallback(
+    (canvas: HTMLCanvasElement, targetIndex: number) => {
+      const { history } = useCanvasStore.getState();
+      if (targetIndex >= 0 && targetIndex < history.length) {
+        useCanvasStore.setState({ historyIndex: targetIndex });
+        loadHistoryState(canvas, history[targetIndex]);
+        return true;
+      }
+      return false;
+    },
+    [loadHistoryState],
   );
 
   // Deshace una acción
@@ -63,6 +77,7 @@ export function useHistory() {
 
   return {
     saveHistory,
+    jumpToHistoryIndex,
     undo,
     redo,
     canUndo: historyIndex > 0,
