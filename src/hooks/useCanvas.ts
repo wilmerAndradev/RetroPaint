@@ -469,82 +469,22 @@ export function useCanvas() {
       const fontSpec = `${textSize}px "${primaryFont}"`;
 
       const executeDraw = () => {
-        // A. Consolidar cualquier selección activa previa antes de iniciar esta
-        if (selectionRectRef.current) {
-          consolidateSelection();
-        }
-
-        // B. Calcular las dimensiones exactas del texto
-        const lines = text.split('\n');
-        
-        // Crear un contexto temporal para medir con precisión
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        if (!tempCtx) return;
-        
-        tempCtx.font = `${textSize}px ${textFont}`;
-        let maxLineWidth = 0;
-        for (const line of lines) {
-          const metrics = tempCtx.measureText(line);
-          if (metrics.width > maxLineWidth) {
-            maxLineWidth = metrics.width;
-          }
-        }
-        
-        // Agregar un pequeño margen de 8px horizontal y 6px vertical
-        const textWidth = Math.max(1, Math.ceil(maxLineWidth) + 8);
-        const lineHeight = textSize * 1.2;
-        const textHeight = Math.max(1, Math.ceil(lines.length * lineHeight) + 6);
-
-        // C. Crear un canvas virtual de esa medida para pintar el texto con fondo transparente
-        const offscreen = document.createElement('canvas');
-        offscreen.width = textWidth;
-        offscreen.height = textHeight;
-        const offCtx = offscreen.getContext('2d');
-        if (!offCtx) return;
-
-        offCtx.fillStyle = fgColor;
-        offCtx.font = `${textSize}px ${textFont}`;
-        offCtx.textBaseline = 'top';
-        
-        lines.forEach((line, index) => {
-          offCtx.fillText(line, 4, 3 + index * lineHeight);
-        });
-
-        // D. Extraer la porción en ImageData para la selección flotante
-        const textImageData = offCtx.getImageData(0, 0, textWidth, textHeight);
-
-        // E. Guardar estados históricos previos
-        originalImageDataBeforeMoveRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        savedImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-        // F. Asignar los parámetros del recuadro flotante
-        selectionRectRef.current = {
-          x: x,
-          y: y,
-          w: textWidth,
-          h: textHeight
-        };
-        selectionOriginalPosRef.current = { x: x, y: y };
-        selectionImageRef.current = textImageData;
-        isDraggingSelectionRef.current = false;
-
-        // G. Pintar el texto flotante en la posición inicial del lienzo
         ctx.save();
-        ctx.drawImage(offscreen, x, y);
+        ctx.fillStyle = fgColor;
+        ctx.font = `${textSize}px ${textFont}`;
+        ctx.textBaseline = 'top';
+        
+        // Dibujar texto línea por línea para soportar saltos de línea (multilínea)
+        const lines = text.split('\n');
+        const lineHeight = textSize * 1.2;
+        lines.forEach((line, index) => {
+          ctx.fillText(line, x, y + index * lineHeight);
+        });
+        
         ctx.restore();
 
-        // H. Sincronizar Zustand con el recuadro animado y activar herramienta de selección
-        useCanvasStore.getState().setActiveSelection({
-          x: x,
-          y: y,
-          width: textWidth,
-          height: textHeight
-        });
-
-        useAppStore.getState().setActiveTool('select');
-        saveHistory(canvas, 'Texto Flotante');
-        setStatusText('Texto insertado como selección flotante. ¡Arrástralo o cópialo libremente!');
+        saveHistory(canvas, 'Texto');
+        setStatusText('Texto insertado en el lienzo');
       };
 
       if (document.fonts) {
@@ -562,7 +502,7 @@ export function useCanvas() {
         executeDraw();
       }
     },
-    [fgColor, textFont, textSize, saveHistory, setStatusText, consolidateSelection],
+    [fgColor, textFont, textSize, saveHistory, setStatusText],
   );
 
   // --- EVENTOS DEL LIENZO ---
