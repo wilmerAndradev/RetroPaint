@@ -181,12 +181,17 @@ export function CanvasArea({
     isPanningRef.current = false;
   };
 
-  // Foco automático del textarea al aparecer
+  // Foco automático del textarea al aparecer con retardo para evitar robo de foco del navegador
   useEffect(() => {
     if (textInputCoords && textareaRef.current) {
-      textareaRef.current.focus();
       setTextValue('');
       isCancellingRef.current = false;
+      const timer = setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
+      }, 50);
+      return () => clearTimeout(timer);
     }
   }, [textInputCoords]);
 
@@ -582,6 +587,10 @@ export function CanvasArea({
           {/* Textarea flotante in-situ WYSIWYG */}
           {textInputCoords && (
             <div
+              onMouseDown={(e) => e.stopPropagation()}
+              onMouseUp={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              onDoubleClick={(e) => e.stopPropagation()}
               style={{
                 position: 'absolute',
                 left: `${textInputCoords.x}px`,
