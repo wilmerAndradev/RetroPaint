@@ -232,6 +232,39 @@ export function CanvasArea({
     }
   };
 
+  // --- ARRASTRE DE CAJA DE TEXTO WYSIWYG ---
+  const handleToolbarMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return; // Solo arrastrar con clic izquierdo
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!textInputCoords) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startCoords = { x: textInputCoords.x, y: textInputCoords.y };
+    const currentZoom = zoom;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      // Calcular el desplazamiento compensando el nivel de zoom activo
+      const dx = (moveEvent.clientX - startX) / (currentZoom / 100);
+      const dy = (moveEvent.clientY - startY) / (currentZoom / 100);
+
+      const newX = Math.round(startCoords.x + dx);
+      const newY = Math.round(startCoords.y + dy);
+
+      setTextInputCoords({ x: newX, y: newY });
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [textInputCoords, zoom, setTextInputCoords]);
+
   // --- DIBUJO DE REGLAS COORDENADAS (RULERS) ---
   const updateRulers = useCallback(() => {
     const canvas = canvasRef.current;
@@ -603,18 +636,19 @@ export function CanvasArea({
             >
               {/* Barra de herramientas flotante sobre la entrada */}
               <div
+                onMouseDown={handleToolbarMouseDown}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '5px',
                   background: 'var(--bg-card)',
-                  border: '1px solid var(--border-color)',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
-                  padding: '3px 6px',
-                  borderRadius: '4px',
+                  border: '1.5px solid var(--border-color)',
+                  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.2)',
+                  padding: '4px 8px',
+                  borderRadius: '4px 4px 0 0',
                   transform: 'translateY(-100%)',
                   position: 'absolute',
-                  top: '-6px',
+                  top: '-4px',
                   left: '0',
                   whiteSpace: 'nowrap',
                   fontSize: '8.5px',
@@ -622,9 +656,14 @@ export function CanvasArea({
                   fontWeight: 'bold',
                   color: 'var(--text-main)',
                   zIndex: 60,
+                  cursor: 'move', // Cursor de mover
+                  userSelect: 'none',
                 }}
-                onMouseDown={(e) => e.preventDefault()} // IMPORTANTE: evita que el textarea pierda el foco
+                title="Haz clic y arrastra aquí para mover la caja de texto"
               >
+                <span style={{ color: 'var(--text-muted)', letterSpacing: '-1.5px', marginRight: '3px', fontSize: '9px' }}>
+                  ░░░
+                </span>
                 <span style={{ color: 'var(--accent-color)', marginRight: '2px' }}>
                   📝 TEXTO
                 </span>
