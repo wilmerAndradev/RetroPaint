@@ -157,6 +157,7 @@ export function StatusBar() {
         </div>
       </div>
 
+
       {/* 2. Derecha: Coordenadas, Dimensiones, Zoom e Icono Grid */}
       <div className="flex items-center gap-4 font-mono font-bold text-[var(--text-main)]">
         {/* Coordenadas X, Y */}

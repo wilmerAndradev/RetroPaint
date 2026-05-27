@@ -38,6 +38,9 @@ function App() {
     deselect,
     openImageFile,
     pasteFromClipboard,
+    ignoreBlurRef,
+    justCommittedTextRef,
+    startResizeSelection,
   } = useCanvas();
 
   // Inicializar manejadores de teclado globales
@@ -147,6 +150,9 @@ function App() {
             onMouseLeave={onMouseLeave}
             onDoubleClick={onDoubleClick}
             drawTextOnCanvas={drawTextOnCanvas}
+            ignoreBlurRef={ignoreBlurRef}
+            justCommittedTextRef={justCommittedTextRef}
+            startResizeSelection={startResizeSelection}
           />
         </div>
 

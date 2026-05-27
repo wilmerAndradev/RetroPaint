@@ -60,6 +60,15 @@ export function useKeyboard({
         return;
       }
 
+      // Ignorar atajos si el foco está en un input o textarea
+      if (
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement ||
+        document.activeElement?.getAttribute('contenteditable') === 'true'
+      ) {
+        return;
+      }
+
       // Alt (Activar cuentagotas temporal)
       if (e.key === 'Alt') {
         e.preventDefault();
@@ -73,15 +82,6 @@ export function useKeyboard({
             );
           }
         }
-        return;
-      }
-
-      // Ignorar atajos si el foco está en un input o textarea
-      if (
-        document.activeElement instanceof HTMLInputElement ||
-        document.activeElement instanceof HTMLTextAreaElement ||
-        document.activeElement?.getAttribute('contenteditable') === 'true'
-      ) {
         return;
       }
 

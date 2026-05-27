@@ -568,40 +568,101 @@ export function PropertiesPanel({
                   onChange={(e) => setTextFont(e.target.value)}
                   className="text-[9px] font-bold text-[var(--text-main)] w-full bg-transparent border-none outline-none cursor-default py-0.5"
                 >
-                  <optgroup label="👾 Pixel & Retro" className="bg-[var(--bg-card)] text-[var(--text-main)] font-bold">
-                    <option value='"Press Start 2P", monospace'>Press Start 2P (8-bit)</option>
-                    <option value="'Pixelify Sans', sans-serif">Pixelify Sans (Retro Pixel)</option>
-                    <option value="Silkscreen, sans-serif">Silkscreen (Micro Pixel)</option>
-                    <option value="VT323, monospace">VT323 (CRT Terminal)</option>
-                    <option value="'Jacquard 12', sans-serif">Jacquard 12 (Retro Gothic)</option>
+                  <optgroup
+                    label="👾 Pixel & Retro"
+                    className="bg-[var(--bg-card)] text-[var(--text-main)] font-bold"
+                  >
+                    <option value='"Press Start 2P", monospace'>
+                      Press Start 2P (8-bit)
+                    </option>
+                    <option value="'Pixelify Sans', sans-serif">
+                      Pixelify Sans (Retro Pixel)
+                    </option>
+                    <option value="Silkscreen, sans-serif">
+                      Silkscreen (Micro Pixel)
+                    </option>
+                    <option value="VT323, monospace">
+                      VT323 (CRT Terminal)
+                    </option>
+                    <option value="'Jacquard 12', sans-serif">
+                      Jacquard 12 (Retro Gothic)
+                    </option>
                   </optgroup>
-                  <optgroup label="⚡ Arcade & Display" className="bg-[var(--bg-card)] text-[var(--text-main)] font-bold">
-                    <option value="'Bungee', sans-serif">Bungee (Arcade Block)</option>
-                    <option value="'Monoton', sans-serif">Monoton (Retro Disco)</option>
-                    <option value="'Righteous', sans-serif">Righteous (Synthwave)</option>
-                    <option value="'Rubik Mono One', sans-serif">Rubik Mono (Classic Bold)</option>
-                    <option value="'Creepster', sans-serif">Creepster (Retro Horror)</option>
+                  <optgroup
+                    label="⚡ Arcade & Display"
+                    className="bg-[var(--bg-card)] text-[var(--text-main)] font-bold"
+                  >
+                    <option value="'Bungee', sans-serif">
+                      Bungee (Arcade Block)
+                    </option>
+                    <option value="'Monoton', sans-serif">
+                      Monoton (Retro Disco)
+                    </option>
+                    <option value="'Righteous', sans-serif">
+                      Righteous (Synthwave)
+                    </option>
+                    <option value="'Rubik Mono One', sans-serif">
+                      Rubik Mono (Classic Bold)
+                    </option>
+                    <option value="'Creepster', sans-serif">
+                      Creepster (Retro Horror)
+                    </option>
                   </optgroup>
-                  <optgroup label="✍️ Cursive & Scripts" className="bg-[var(--bg-card)] text-[var(--text-main)] font-bold">
-                    <option value="Lobster, cursive">Lobster (Retro Script)</option>
-                    <option value="Pacifico, cursive">Pacifico (Vintage Script)</option>
-                    <option value="'Dancing Script', cursive">Dancing Script (Elegant)</option>
-                    <option value="'Satisfy', cursive">Satisfy (Signature Script)</option>
-                    <option value="'Sacramento', cursive">Sacramento (Thin Handwriting)</option>
-                    <option value="'Shadows Into Light', cursive">Shadows Into Light (Handwritten)</option>
+                  <optgroup
+                    label="✍️ Cursive & Scripts"
+                    className="bg-[var(--bg-card)] text-[var(--text-main)] font-bold"
+                  >
+                    <option value="Lobster, cursive">
+                      Lobster (Retro Script)
+                    </option>
+                    <option value="Pacifico, cursive">
+                      Pacifico (Vintage Script)
+                    </option>
+                    <option value="'Dancing Script', cursive">
+                      Dancing Script (Elegant)
+                    </option>
+                    <option value="'Satisfy', cursive">
+                      Satisfy (Signature Script)
+                    </option>
+                    <option value="'Sacramento', cursive">
+                      Sacramento (Thin Handwriting)
+                    </option>
+                    <option value="'Shadows Into Light', cursive">
+                      Shadows Into Light (Handwritten)
+                    </option>
                   </optgroup>
-                  <optgroup label="🏛️ Serif & Classic" className="bg-[var(--bg-card)] text-[var(--text-main)] font-bold">
-                    <option value="'Playfair Display', serif">Playfair Display (Elegant Serif)</option>
-                    <option value="Cinzel, serif">Cinzel (Roman Imperial)</option>
-                    <option value="'Abril Fatface', serif">Abril Fatface (Retro Fat Serif)</option>
+                  <optgroup
+                    label="🏛️ Serif & Classic"
+                    className="bg-[var(--bg-card)] text-[var(--text-main)] font-bold"
+                  >
+                    <option value="'Playfair Display', serif">
+                      Playfair Display (Elegant Serif)
+                    </option>
+                    <option value="Cinzel, serif">
+                      Cinzel (Roman Imperial)
+                    </option>
+                    <option value="'Abril Fatface', serif">
+                      Abril Fatface (Retro Fat Serif)
+                    </option>
                     <option value="Georgia, serif">Georgia</option>
                   </optgroup>
-                  <optgroup label="💻 Modern & Technical" className="bg-[var(--bg-card)] text-[var(--text-main)] font-bold">
-                    <option value="Inter, sans-serif">Inter (Modern Sans)</option>
-                    <option value="'Outfit', sans-serif">Outfit (Geometric Clean)</option>
-                    <option value="'Ubuntu Mono', monospace">Ubuntu Mono (Technical Code)</option>
+                  <optgroup
+                    label="💻 Modern & Technical"
+                    className="bg-[var(--bg-card)] text-[var(--text-main)] font-bold"
+                  >
+                    <option value="Inter, sans-serif">
+                      Inter (Modern Sans)
+                    </option>
+                    <option value="'Outfit', sans-serif">
+                      Outfit (Geometric Clean)
+                    </option>
+                    <option value="'Ubuntu Mono', monospace">
+                      Ubuntu Mono (Technical Code)
+                    </option>
                     <option value="Arial, sans-serif">Arial</option>
-                    <option value="'Courier New', monospace">Courier New</option>
+                    <option value="'Courier New', monospace">
+                      Courier New
+                    </option>
                   </optgroup>
                 </select>
               </div>
@@ -637,7 +698,9 @@ export function PropertiesPanel({
           <div className="flex flex-col">
             <div className="flex items-center justify-between cursor-default">
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[var(--accent-color)] font-bold">〰️</span>
+                <span className="text-[10px] text-[var(--accent-color)] font-bold">
+                  〰️
+                </span>
                 <span className="text-[9.5px] font-bold text-[var(--text-main)] tracking-wider">
                   SUAVIZADO DE TRAZO
                 </span>
@@ -646,13 +709,17 @@ export function PropertiesPanel({
                 type="button"
                 onClick={() => setSmoothing(!smoothing)}
                 className={`w-7 h-4 rounded-full p-0.5 transition-colors duration-200 focus:outline-none cursor-pointer border border-[var(--border-color)]/30 ${
-                  smoothing ? 'bg-[var(--accent-color)]' : 'bg-[var(--bg-primary)]'
+                  smoothing
+                    ? 'bg-[var(--accent-color)]'
+                    : 'bg-[var(--bg-primary)]'
                 }`}
                 title={smoothing ? 'Desactivar suavizado' : 'Activar suavizado'}
               >
                 <div
                   className={`w-2.5 h-2.5 rounded-full shadow-sm transform transition-transform duration-200 ${
-                    smoothing ? 'translate-x-3.5 bg-white' : 'translate-x-0 bg-[var(--text-muted)]'
+                    smoothing
+                      ? 'translate-x-3.5 bg-white'
+                      : 'translate-x-0 bg-[var(--text-muted)]'
                   }`}
                 />
               </button>
@@ -662,12 +729,14 @@ export function PropertiesPanel({
               <div className="flex flex-col gap-2 mt-2.5 p-2.5 bg-[var(--bg-primary)] border border-[var(--border-color)]/50 rounded-lg shadow-inner relative overflow-hidden transition-all duration-300">
                 {/* Left accent colored line */}
                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--accent-color)]" />
-                
+
                 <div className="pl-1.5 flex flex-col gap-2">
                   <div className="flex justify-between items-center text-[9px] text-[var(--text-main)] font-bold">
                     <span className="opacity-80">ESTABILIZADO</span>
                     <span className="font-mono bg-[var(--bg-card)] px-2 py-0.5 border border-[var(--border-color)] rounded-md text-[8.5px] text-[var(--accent-color)] font-bold shadow-sm">
-                      {smoothingLevel === 0 ? 'DESACTIVADO' : `NIVEL ${smoothingLevel}`}
+                      {smoothingLevel === 0
+                        ? 'DESACTIVADO'
+                        : `NIVEL ${smoothingLevel}`}
                     </span>
                   </div>
                   <div className="flex items-center gap-2.5">
@@ -676,7 +745,9 @@ export function PropertiesPanel({
                       min="0"
                       max="20"
                       value={smoothingLevel}
-                      onChange={(e) => setSmoothingLevel(Number(e.target.value))}
+                      onChange={(e) =>
+                        setSmoothingLevel(Number(e.target.value))
+                      }
                       className="w-full h-1 bg-[var(--bg-card)] border border-[var(--border-color)]/30 rounded-lg appearance-none cursor-pointer accent-[var(--accent-color)]"
                     />
                     <span className="text-[9px] font-mono font-bold w-4 text-center">
@@ -692,7 +763,9 @@ export function PropertiesPanel({
           <div className="flex flex-col border-t border-[var(--border-color)]/60 pt-3">
             <div className="flex items-center justify-between cursor-default">
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[var(--accent-color)] font-bold">🌫️</span>
+                <span className="text-[10px] text-[var(--accent-color)] font-bold">
+                  🌫️
+                </span>
                 <span className="text-[9.5px] font-bold text-[var(--text-main)] tracking-wider">
                   BORDES SUAVES
                 </span>
@@ -701,13 +774,21 @@ export function PropertiesPanel({
                 type="button"
                 onClick={() => setSoftEdges(!softEdges)}
                 className={`w-7 h-4 rounded-full p-0.5 transition-colors duration-200 focus:outline-none cursor-pointer border border-[var(--border-color)]/30 ${
-                  softEdges ? 'bg-[var(--accent-color)]' : 'bg-[var(--bg-primary)]'
+                  softEdges
+                    ? 'bg-[var(--accent-color)]'
+                    : 'bg-[var(--bg-primary)]'
                 }`}
-                title={softEdges ? 'Desactivar bordes suaves' : 'Activar bordes suaves'}
+                title={
+                  softEdges
+                    ? 'Desactivar bordes suaves'
+                    : 'Activar bordes suaves'
+                }
               >
                 <div
                   className={`w-2.5 h-2.5 rounded-full shadow-sm transform transition-transform duration-200 ${
-                    softEdges ? 'translate-x-3.5 bg-white' : 'translate-x-0 bg-[var(--text-muted)]'
+                    softEdges
+                      ? 'translate-x-3.5 bg-white'
+                      : 'translate-x-0 bg-[var(--text-muted)]'
                   }`}
                 />
               </button>
@@ -717,7 +798,7 @@ export function PropertiesPanel({
               <div className="flex flex-col gap-2 mt-2.5 p-2.5 bg-[var(--bg-primary)] border border-[var(--border-color)]/50 rounded-lg shadow-inner relative overflow-hidden transition-all duration-300">
                 {/* Left accent colored line */}
                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--accent-color)]" />
-                
+
                 <div className="pl-1.5 flex flex-col gap-2">
                   <div className="flex justify-between items-center text-[9px] text-[var(--text-main)] font-bold">
                     <span className="opacity-80">DIFUMINADO</span>
@@ -731,7 +812,9 @@ export function PropertiesPanel({
                       min="1"
                       max="20"
                       value={softEdgesLevel}
-                      onChange={(e) => setSoftEdgesLevel(Number(e.target.value))}
+                      onChange={(e) =>
+                        setSoftEdgesLevel(Number(e.target.value))
+                      }
                       className="w-full h-1 bg-[var(--bg-card)] border border-[var(--border-color)]/30 rounded-lg appearance-none cursor-pointer accent-[var(--accent-color)]"
                     />
                     <span className="text-[9px] font-mono font-bold w-4 text-center">

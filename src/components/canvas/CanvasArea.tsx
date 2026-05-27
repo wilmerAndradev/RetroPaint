@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useCanvasStore } from '../../store/useCanvasStore';
 
@@ -11,12 +11,16 @@ interface CanvasAreaProps {
   onMouseLeave: React.MouseEventHandler<HTMLCanvasElement>;
   onDoubleClick?: React.MouseEventHandler<HTMLCanvasElement>;
   drawTextOnCanvas?: (text: string, x: number, y: number) => void;
+  ignoreBlurRef?: React.RefObject<boolean>;
+  justCommittedTextRef?: React.RefObject<boolean>;
+  startResizeSelection: (handle: string, e: React.MouseEvent) => void;
 }
 
 function getDynamicCursor(
   tool: string,
   brushSize: number,
   zoom: number,
+  hasActiveTextBox?: boolean,
 ): string {
   // Escalar el tamaño según el nivel del zoom (porcentaje / 100)
   const scaledSize = Math.max(8, Math.min(brushSize * (zoom / 100), 200));
@@ -64,7 +68,7 @@ function getDynamicCursor(
       return "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M2 30l6-6 18-18a4 4 0 0 0-6-6L2 18z' fill='%23ffffff' stroke='%230f2b5c' stroke-width='1.5'/%3E%3Cpath d='M2 30l4-1' stroke='%230f2b5c' stroke-width='2'/%3E%3Cpath d='M16 6l10 10' stroke='%230f2b5c' stroke-width='1.5'/%3E%3C/svg%3E\") 2 30, pointer";
 
     case 'text':
-      return 'text';
+      return hasActiveTextBox ? 'crosshair' : 'text';
     case 'select':
       return 'crosshair';
     case 'move':
@@ -84,6 +88,9 @@ export function CanvasArea({
   onMouseLeave,
   onDoubleClick,
   drawTextOnCanvas,
+  ignoreBlurRef,
+  justCommittedTextRef,
+  startResizeSelection,
 }: CanvasAreaProps) {
   const zoom = useAppStore((state) => state.zoom);
   const setZoom = useAppStore((state) => state.setZoom);
@@ -114,12 +121,12 @@ export function CanvasArea({
   // Entrada de texto flotante WYSIWYG
   const textInputCoords = useAppStore((state) => state.textInputCoords);
   const setTextInputCoords = useAppStore((state) => state.setTextInputCoords);
+  const textValue = useAppStore((state) => state.textValue);
+  const setTextValue = useAppStore((state) => state.setTextValue);
   const fgColor = useAppStore((state) => state.fgColor);
   const textFont = useAppStore((state) => state.textFont);
   const textSize = useAppStore((state) => state.textSize);
-  const [textValue, setTextValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const isCancellingRef = useRef(false);
 
   // Manejador del zoom mediante rueda de mouse + Control
   useEffect(() => {
@@ -143,11 +150,6 @@ export function CanvasArea({
       container.removeEventListener('wheel', handleWheel);
     };
   }, [zoom, setZoom]);
-
-  // Sincronizar reglas cuando cambie el zoom, el paneo o el tamaño del lienzo
-  useEffect(() => {
-    updateRulers();
-  }, [zoom, width, height, showRulers]);
 
   // Manejadores del Paneo (Drag-to-Scroll con Space)
   const handleContainerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -184,8 +186,6 @@ export function CanvasArea({
   // Foco automático del textarea al aparecer con retardo para evitar robo de foco del navegador
   useEffect(() => {
     if (textInputCoords && textareaRef.current) {
-      setTextValue('');
-      isCancellingRef.current = false;
       const timer = setTimeout(() => {
         if (textareaRef.current) {
           textareaRef.current.focus();
@@ -197,32 +197,42 @@ export function CanvasArea({
 
   // Consolidar el texto y dibujarlo en el lienzo
   const commitText = useCallback(() => {
-    if (isCancellingRef.current) return;
-    if (textInputCoords && drawTextOnCanvas && textValue.trim()) {
-      drawTextOnCanvas(textValue, textInputCoords.x, textInputCoords.y);
+    // Activar flag para que el mousedown del canvas que sigue al click en
+    // "Aplicar" o al blur no abra un nuevo cuadro de texto inmediatamente.
+    // Se auto-resetea en 150ms para permitir clics posteriores normales.
+    if (justCommittedTextRef) {
+      justCommittedTextRef.current = true;
+      setTimeout(() => {
+        if (justCommittedTextRef) {
+          justCommittedTextRef.current = false;
+        }
+      }, 150);
+    }
+
+    const state = useAppStore.getState();
+    const currentCoords = state.textInputCoords;
+    const currentValue = state.textValue;
+
+    if (currentCoords && drawTextOnCanvas && currentValue.trim()) {
+      drawTextOnCanvas(currentValue, currentCoords.x, currentCoords.y);
     }
     setTextInputCoords(null);
     setTextValue('');
-  }, [textInputCoords, drawTextOnCanvas, textValue, setTextInputCoords]);
+  }, [drawTextOnCanvas, setTextInputCoords, setTextValue, justCommittedTextRef]);
 
   // Cuando el textarea pierde foco, consolidar el texto
   const handleTextBlur = useCallback(() => {
-    if (isCancellingRef.current) return;
-    
-    // Pequeño retardo para permitir que los botones de "Aplicar"/"Cancelar" capturen el mousedown
-    const timer = setTimeout(() => {
-      if (!isCancellingRef.current) {
-        commitText();
-      }
-    }, 120);
-    return () => clearTimeout(timer);
-  }, [commitText]);
+    if (ignoreBlurRef?.current) {
+      ignoreBlurRef.current = false;
+      return;
+    }
+    commitText();
+  }, [commitText, ignoreBlurRef]);
 
   const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
       // Escape: descartar sin guardar
       e.preventDefault();
-      isCancellingRef.current = true;
       setTextInputCoords(null);
       setTextValue('');
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -233,37 +243,40 @@ export function CanvasArea({
   };
 
   // --- ARRASTRE DE CAJA DE TEXTO WYSIWYG ---
-  const handleToolbarMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return; // Solo arrastrar con clic izquierdo
-    e.preventDefault();
-    e.stopPropagation();
+  const handleToolbarMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return; // Solo arrastrar con clic izquierdo
+      e.preventDefault();
+      e.stopPropagation();
 
-    if (!textInputCoords) return;
+      if (!textInputCoords) return;
 
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startCoords = { x: textInputCoords.x, y: textInputCoords.y };
-    const currentZoom = zoom;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startCoords = { x: textInputCoords.x, y: textInputCoords.y };
+      const currentZoom = zoom;
 
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      // Calcular el desplazamiento compensando el nivel de zoom activo
-      const dx = (moveEvent.clientX - startX) / (currentZoom / 100);
-      const dy = (moveEvent.clientY - startY) / (currentZoom / 100);
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        // Calcular el desplazamiento compensando el nivel de zoom activo
+        const dx = (moveEvent.clientX - startX) / (currentZoom / 100);
+        const dy = (moveEvent.clientY - startY) / (currentZoom / 100);
 
-      const newX = Math.round(startCoords.x + dx);
-      const newY = Math.round(startCoords.y + dy);
+        const newX = Math.round(startCoords.x + dx);
+        const newY = Math.round(startCoords.y + dy);
 
-      setTextInputCoords({ x: newX, y: newY });
-    };
+        setTextInputCoords({ x: newX, y: newY });
+      };
 
-    const onMouseUp = () => {
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
 
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }, [textInputCoords, zoom, setTextInputCoords]);
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    },
+    [textInputCoords, zoom, setTextInputCoords],
+  );
 
   // --- DIBUJO DE REGLAS COORDENADAS (RULERS) ---
   const updateRulers = useCallback(() => {
@@ -455,8 +468,8 @@ export function CanvasArea({
     if (isSpacePressed) {
       return isPanningRef.current ? 'grabbing' : 'grab';
     }
-    return getDynamicCursor(activeTool, brushSize, zoom);
-  }, [activeTool, brushSize, zoom, isSpacePressed]);
+    return getDynamicCursor(activeTool, brushSize, zoom, !!textInputCoords);
+  }, [activeTool, brushSize, zoom, isSpacePressed, textInputCoords]);
 
   const canvasBackgroundClass = useMemo(() => {
     if (canvasBackground === 'transparent') return 'canvas-transparent-bg';
@@ -614,6 +627,39 @@ export function CanvasArea({
                 width={activeSelection.width}
                 height={activeSelection.height}
               />
+              {/* Manejadores premium de cambio de tamaño (8 puntos de control) */}
+              {(() => {
+                const { x, y, width, height } = activeSelection;
+                const handles = [
+                  { name: 'nw', cx: x, cy: y, cursor: 'nwse-resize' },
+                  { name: 'n', cx: x + width / 2, cy: y, cursor: 'ns-resize' },
+                  { name: 'ne', cx: x + width, cy: y, cursor: 'nesw-resize' },
+                  { name: 'e', cx: x + width, cy: y + height / 2, cursor: 'ew-resize' },
+                  { name: 'se', cx: x + width, cy: y + height, cursor: 'nwse-resize' },
+                  { name: 's', cx: x + width / 2, cy: y + height, cursor: 'ns-resize' },
+                  { name: 'sw', cx: x, cy: y + height, cursor: 'nesw-resize' },
+                  { name: 'w', cx: x, cy: y + height / 2, cursor: 'ew-resize' },
+                ];
+
+                return handles.map((h) => (
+                  <rect
+                    key={h.name}
+                    x={h.cx - 4}
+                    y={h.cy - 4}
+                    width="8"
+                    height="8"
+                    fill="var(--accent-color)"
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                    style={{
+                      cursor: h.cursor,
+                      pointerEvents: 'all',
+                      filter: 'drop-shadow(0px 1px 2px rgba(0,0,0,0.35))',
+                    }}
+                    onMouseDown={(e) => startResizeSelection(h.name, e)}
+                  />
+                ));
+              })()}
             </svg>
           )}
 
@@ -621,7 +667,6 @@ export function CanvasArea({
           {textInputCoords && (
             <div
               onMouseDown={(e) => e.stopPropagation()}
-              onMouseUp={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => e.stopPropagation()}
               style={{
@@ -661,14 +706,40 @@ export function CanvasArea({
                 }}
                 title="Haz clic y arrastra aquí para mover la caja de texto"
               >
-                <span style={{ color: 'var(--text-muted)', letterSpacing: '-1.5px', marginRight: '3px', fontSize: '9px' }}>
-                  ░░░
-                </span>
-                <span style={{ color: 'var(--accent-color)', marginRight: '2px' }}>
+                {/* Ícono de movimiento (flecha de cuatro puntas) SVG premium */}
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ marginRight: '2px', color: 'var(--accent-color)' }}
+                >
+                  <title>Mover Caja de Texto</title>
+                  <polyline points="5 9 2 12 5 15" />
+                  <polyline points="9 5 12 2 15 5" />
+                  <polyline points="15 19 12 22 9 19" />
+                  <polyline points="19 9 22 12 19 15" />
+                  <line x1="2" y1="12" x2="22" y2="12" />
+                  <line x1="12" y1="2" x2="12" y2="22" />
+                </svg>
+                <span
+                  style={{ color: 'var(--accent-color)', marginRight: '2px' }}
+                >
                   📝 TEXTO
                 </span>
                 <button
                   type="button"
+                  onMouseDown={(e) => {
+                    // Detener propagación para no activar el drag de la toolbar
+                    e.stopPropagation();
+                    // Prevenir que el blur del textarea dispare commitText
+                    // antes de que el onClick lo haga — evita el doble commit
+                    if (ignoreBlurRef) ignoreBlurRef.current = true;
+                  }}
                   onClick={commitText}
                   title="Aplicar texto al lienzo (Ctrl+Enter)"
                   className="px-2 py-0.5 bg-[var(--accent-color)] text-white border border-transparent rounded text-[8px] font-bold hover:brightness-110 active:scale-95 transition-all cursor-pointer"
@@ -677,8 +748,13 @@ export function CanvasArea({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => {
+                    // Detener propagación para no activar el drag de la toolbar
+                    e.stopPropagation();
+                    // Ignorar el blur que se dispara al perder foco
+                    if (ignoreBlurRef) ignoreBlurRef.current = true;
+                  }}
                   onClick={() => {
-                    isCancellingRef.current = true;
                     setTextInputCoords(null);
                     setTextValue('');
                   }}
@@ -687,7 +763,13 @@ export function CanvasArea({
                 >
                   ✗ Cancelar
                 </button>
-                <span style={{ color: 'var(--text-muted)', marginLeft: '4px', fontSize: '7.5px' }}>
+                <span
+                  style={{
+                    color: 'var(--text-muted)',
+                    marginLeft: '4px',
+                    fontSize: '7.5px',
+                  }}
+                >
                   Ctrl+Enter para guardar | Enter para nueva línea
                 </span>
               </div>
@@ -706,20 +788,31 @@ export function CanvasArea({
                   color: fgColor,
                   caretColor: fgColor,
                   background: 'transparent',
-                  border: '1.5px dashed var(--accent-color)',
+                  border: '1px dashed var(--accent-color)',
                   borderRadius: '3px',
                   outline: 'none',
                   resize: 'none',
                   margin: 0,
                   padding: '4px 6px',
                   minWidth: '200px',
-                  width: `${Math.max(200, textValue.split('\n').reduce((max, line) => Math.max(max, line.length * (textSize * 0.55)), 200))}px`,
+                  maxWidth: `${width - textInputCoords.x}px`,
+                  width: `${Math.max(
+                    200,
+                    textValue
+                      .split('\n')
+                      .reduce(
+                        (max, line) =>
+                          Math.max(max, line.length * (textSize * 0.55)),
+                        200,
+                      ),
+                  )}px`,
                   height: `${textareaHeight}px`,
                   lineHeight: '1.2',
                   overflow: 'hidden',
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
-                  textShadow: '0 0 1px rgba(255,255,255,0.6), 0 0 1px rgba(0,0,0,0.6)',
+                  textShadow:
+                    '0 0 1px rgba(255,255,255,0.6), 0 0 1px rgba(0,0,0,0.6)',
                 }}
               />
             </div>

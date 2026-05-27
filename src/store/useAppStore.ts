@@ -46,6 +46,7 @@ interface AppState {
 
   // Entrada de texto interactivo flotante
   textInputCoords: { x: number; y: number } | null;
+  textValue: string;
   textFont: string;
   textSize: number;
 
@@ -79,6 +80,7 @@ interface AppState {
   setIsNewCanvasModalOpen: (open: boolean) => void;
   setIsShortcutsModalOpen: (open: boolean) => void;
   setTextInputCoords: (coords: { x: number; y: number } | null) => void;
+  setTextValue: (value: string) => void;
   setTextFont: (font: string) => void;
   setTextSize: (size: number) => void;
   addRecentColor: (color: string) => void;
@@ -112,6 +114,7 @@ export const useAppStore = create<AppState>((set) => ({
   isNewCanvasModalOpen: false,
   isShortcutsModalOpen: false,
   textInputCoords: null,
+  textValue: '',
   textFont: '"Press Start 2P"',
   textSize: 16,
   recentColors: [
@@ -153,6 +156,7 @@ export const useAppStore = create<AppState>((set) => ({
       statusText: `Herramienta activa: ${tool.toUpperCase()}`,
       // Limpiar coordenadas de texto flotante si se cambia de herramienta
       textInputCoords: null,
+      textValue: '',
     }),
   setFgColor: (color) => set({ fgColor: color }),
   setBgColor: (color) => set({ bgColor: color }),
@@ -184,6 +188,7 @@ export const useAppStore = create<AppState>((set) => ({
   setIsNewCanvasModalOpen: (open) => set({ isNewCanvasModalOpen: open }),
   setIsShortcutsModalOpen: (open) => set({ isShortcutsModalOpen: open }),
   setTextInputCoords: (coords) => set({ textInputCoords: coords }),
+  setTextValue: (value) => set({ textValue: value }),
   setTextFont: (textFont) => set({ textFont }),
   setTextSize: (textSize) => set({ textSize }),
 
@@ -282,5 +287,6 @@ export const useAppStore = create<AppState>((set) => ({
       cursorY: null,
       statusText: 'Lienzo reiniciado',
       textInputCoords: null,
+      textValue: '',
     }),
 }));

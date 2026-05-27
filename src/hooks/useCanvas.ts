@@ -4,6 +4,98 @@ import { useCanvasStore } from '../store/useCanvasStore';
 import { floodFill } from '../utils/floodFill';
 import { useHistory } from './useHistory';
 
+function getContiguousElementRect(
+  canvas: HTMLCanvasElement,
+  startX: number,
+  startY: number,
+  canvasBackground: 'white' | 'black' | 'transparent',
+) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const w = canvas.width;
+  const h = canvas.height;
+
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const data = imgData.data;
+
+  // Helper to check if pixel is background
+  const isBackground = (x: number, y: number) => {
+    const idx = (y * w + x) * 4;
+    if (canvasBackground === 'transparent') {
+      return data[idx + 3] === 0;
+    } else if (canvasBackground === 'black') {
+      // Es negro si RGB son menores a 15 (por si hay suavizado)
+      return data[idx] < 15 && data[idx + 1] < 15 && data[idx + 2] < 15;
+    } else {
+      // Es blanco si RGB son todos mayores a 240
+      return data[idx] > 240 && data[idx + 1] > 240 && data[idx + 2] > 240;
+    }
+  };
+
+  // Si el pixel en el que se hizo clic ya es fondo, no hay elemento que seleccionar
+  if (isBackground(startX, startY)) return null;
+
+  // Búsqueda en anchura (BFS) optimizada
+  const queue = new Int32Array(w * h * 2);
+  const visited = new Uint8Array(w * h);
+  
+  let head = 0;
+  let tail = 0;
+
+  queue[tail++] = startX;
+  queue[tail++] = startY;
+  visited[startY * w + startX] = 1;
+
+  let minX = startX;
+  let maxX = startX;
+  let minY = startY;
+  let maxY = startY;
+
+  // Límite de pixeles para evitar cuelgues
+  const maxPixels = 150000;
+
+  while (head < tail && tail < maxPixels * 2) {
+    const cx = queue[head++];
+    const cy = queue[head++];
+
+    const neighbors = [
+      cx - 1, cy,
+      cx + 1, cy,
+      cx, cy - 1,
+      cx, cy + 1
+    ];
+
+    for (let i = 0; i < 8; i += 2) {
+      const nx = neighbors[i];
+      const ny = neighbors[i+1];
+
+      if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+        const idx = ny * w + nx;
+        if (!visited[idx]) {
+          visited[idx] = 1;
+          if (!isBackground(nx, ny)) {
+            queue[tail++] = nx;
+            queue[tail++] = ny;
+            if (nx < minX) minX = nx;
+            if (nx > maxX) maxX = nx;
+            if (ny < minY) minY = ny;
+            if (ny > maxY) maxY = ny;
+          }
+        }
+      }
+    }
+  }
+
+  const rectW = maxX - minX + 1;
+  const rectH = maxY - minY + 1;
+
+  if (rectW > 0 && rectH > 0) {
+    return { x: minX, y: minY, w: rectW, h: rectH };
+  }
+  return null;
+}
+
 export function useCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -23,13 +115,15 @@ export function useCanvas() {
   const softEdgesLevel = useAppStore((state) => state.softEdgesLevel);
   const textFont = useAppStore((state) => state.textFont);
   const textSize = useAppStore((state) => state.textSize);
+  const textInputCoords = useAppStore((state) => state.textInputCoords);
 
   // Canvas store states
   const width = useCanvasStore((state) => state.width);
   const height = useCanvasStore((state) => state.height);
+  const canvasBackground = useCanvasStore((state) => state.canvasBackground);
 
   // History hook
-  const { saveHistory, undo, redo, canUndo, canRedo } = useHistory();
+  const { saveHistory, undo, redo, canUndo, canRedo, jumpToHistoryIndex } = useHistory();
 
   // Internal drawing states
   const isDrawingRef = useRef(false);
@@ -79,6 +173,31 @@ export function useCanvas() {
   // Referencias adicionales para estabilización y recuperaciones de selección
   const originalImageDataBeforeMoveRef = useRef<ImageData | null>(null);
   const lastStabilizedCoordsRef = useRef<{ x: number; y: number } | null>(null);
+  const ignoreBlurRef = useRef<boolean>(false);
+  // Bloquea la creación de un nuevo cuadro de texto inmediatamente tras un commit
+  // para evitar el ciclo: blur→commit→mousedown→nuevo cuadro
+  const justCommittedTextRef = useRef<boolean>(false);
+
+  // --- REFERENCIAS PARA REDIMENSIONAMIENTO (ESCALADO) DE SELECCIÓN ---
+  const isResizingRef = useRef<string | null>(null); // 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
+  const resizeStartRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const resizeStartCoordsRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // --- ESTRUCTURAS PARA RE-EDICIÓN DE TEXTO POR DOBLE CLIC ---
+  interface CommittedText {
+    id: string;
+    x: number;
+    y: number;
+    text: string;
+    font: string;
+    size: number;
+    color: string;
+    width: number;
+    height: number;
+    historyIndex: number;
+  }
+  const committedTextsRef = useRef<CommittedText[]>([]);
+  const editingTextRef = useRef<CommittedText | null>(null);
 
   const getOffscreenCanvas = useCallback((w: number, h: number) => {
     if (!offscreenCanvasRef.current) {
@@ -180,12 +299,14 @@ export function useCanvas() {
 
     // Crear canvas temporal para dibujar el ImageData
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = rect.w;
-    tempCanvas.height = rect.h;
+    const origW = selectionImageRef.current.width;
+    const origH = selectionImageRef.current.height;
+    tempCanvas.width = origW;
+    tempCanvas.height = origH;
     const tempCtx = tempCanvas.getContext('2d');
     if (tempCtx) {
       tempCtx.putImageData(selectionImageRef.current, 0, 0);
-      ctx.drawImage(tempCanvas, pos.x, pos.y);
+      ctx.drawImage(tempCanvas, pos.x, pos.y, rect.w, rect.h);
     }
 
     // Limpiar estados
@@ -202,10 +323,103 @@ export function useCanvas() {
     setStatusText('Selección consolidada en el lienzo');
   }, [saveHistory, setStatusText]);
 
-  // Consolidar selección flotante de forma automática si se cambia de herramienta
+  // --- MÉTODO EXPRESAMENTE DE TEXTO WYSIWYG ---
+  const drawTextOnCanvas = useCallback(
+    (text: string, x: number, y: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas || !text.trim()) return;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const primaryFont = textFont.split(',')[0].trim().replace(/['"]/g, '');
+      const fontSpec = `${textSize}px "${primaryFont}"`;
+
+      const executeDraw = () => {
+        ctx.save();
+        ctx.fillStyle = fgColor;
+        ctx.font = `${textSize}px ${textFont}`;
+        ctx.textBaseline = 'top';
+
+        const lines = text.split('\n');
+        const lineHeight = textSize * 1.2;
+        let maxLineWidth = 0;
+        lines.forEach((line, index) => {
+          ctx.fillText(line, x + 6, y + 4 + index * lineHeight);
+          const width = ctx.measureText(line).width;
+          if (width > maxLineWidth) {
+            maxLineWidth = width;
+          }
+        });
+
+        ctx.restore();
+
+        saveHistory(canvas, 'Texto');
+
+        const currentHistoryIndex = useCanvasStore.getState().historyIndex;
+
+        // Si estábamos editando un texto existente, eliminamos el bloque de texto antiguo
+        if (editingTextRef.current) {
+          committedTextsRef.current = committedTextsRef.current.filter(
+            (t) => t.id !== editingTextRef.current?.id
+          );
+          editingTextRef.current = null;
+        }
+
+        // Agregar el nuevo bloque de texto a la lista para doble clic
+        committedTextsRef.current.push({
+          id: Math.random().toString(36).substring(2, 9),
+          x,
+          y,
+          text,
+          font: textFont,
+          size: textSize,
+          color: fgColor,
+          width: maxLineWidth + 12, // Coincide con el padding horizontal 4px 6px (6px a cada lado)
+          height: lines.length * lineHeight + 8, // Coincide con el padding vertical 4px 6px (4px arriba/abajo)
+          historyIndex: currentHistoryIndex,
+        });
+
+        setStatusText('Texto insertado en el lienzo');
+      };
+
+      if (document.fonts) {
+        setStatusText('Cargando tipografía de Google Fonts...');
+        document.fonts
+          .load(fontSpec)
+          .then(() => {
+            executeDraw();
+          })
+          .catch((err) => {
+            console.warn(
+              'Error al precargar fuente, dibujando con fallback:',
+              err,
+            );
+            executeDraw();
+          });
+      } else {
+        executeDraw();
+      }
+    },
+    [fgColor, textFont, textSize, saveHistory, setStatusText],
+  );
+
+  // Consolidar selección flotante y texto de forma automática si se cambia de herramienta
   useEffect(() => {
-    if (activeTool !== 'select') {
+    if (activeTool !== 'select' && activeTool !== 'move') {
       consolidateSelection();
+    }
+    if (activeTool !== 'text') {
+      const state = useAppStore.getState();
+      if (state.textInputCoords && state.textValue.trim()) {
+        drawTextOnCanvas(
+          state.textValue,
+          state.textInputCoords.x,
+          state.textInputCoords.y,
+        );
+      }
+      useAppStore.getState().setTextInputCoords(null);
+      useAppStore.getState().setTextValue('');
     }
     // Cancelar trazos a medio dibujar si se cambia de herramienta
     if (activeTool !== 'bezier') {
@@ -214,7 +428,20 @@ export function useCanvas() {
     if (activeTool !== 'polygon') {
       polygonPointsRef.current = [];
     }
-  }, [activeTool, consolidateSelection]);
+  }, [activeTool, consolidateSelection, drawTextOnCanvas]);
+
+  // Efecto reactivo para detectar si el usuario cancela la edición de un texto mediante doble clic
+  useEffect(() => {
+    if (!textInputCoords && editingTextRef.current) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        // Restaurar al estado en el que el texto ya estaba consolidado en el lienzo
+        jumpToHistoryIndex(canvas, editingTextRef.current.historyIndex);
+        setStatusText('Edición de texto cancelada, original restaurado');
+      }
+      editingTextRef.current = null;
+    }
+  }, [textInputCoords, jumpToHistoryIndex, setStatusText]);
 
   // Dibuja una línea suavizada o de píxeles gruesos
   const drawLine = useCallback(
@@ -434,10 +661,20 @@ export function useCanvas() {
     const ctx = canvas.getContext('2d');
     if (ctx) {
       // Guardar el estado original del lienzo (para Escape)
-      originalImageDataBeforeMoveRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
+      originalImageDataBeforeMoveRef.current = ctx.getImageData(
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+
       // Guardar el lienzo antes del pegado flotante (que no tiene hueco porque es un paste)
-      savedImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      savedImageDataRef.current = ctx.getImageData(
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
 
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = w;
@@ -449,61 +686,12 @@ export function useCanvas() {
       }
     }
 
-    useCanvasStore.getState().setActiveSelection({ x: 10, y: 10, width: w, height: h });
+    useCanvasStore
+      .getState()
+      .setActiveSelection({ x: 10, y: 10, width: w, height: h });
     useAppStore.getState().setActiveTool('select');
     setStatusText('Selección pegada en el lienzo. Puedes moverla ahora.');
   }, [consolidateSelection, setStatusText]);
-
-  // --- MÉTODO EXPRESAMENTE DE TEXTO WYSIWYG ---
-
-  const drawTextOnCanvas = useCallback(
-    (text: string, x: number, y: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas || !text.trim()) return;
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      // Extraer la familia tipográfica primaria para asegurar su carga robusta en el navegador
-      const primaryFont = textFont.split(',')[0].trim().replace(/['"]/g, '');
-      const fontSpec = `${textSize}px "${primaryFont}"`;
-
-      const executeDraw = () => {
-        ctx.save();
-        ctx.fillStyle = fgColor;
-        ctx.font = `${textSize}px ${textFont}`;
-        ctx.textBaseline = 'top';
-        
-        // Dibujar texto línea por línea para soportar saltos de línea (multilínea)
-        const lines = text.split('\n');
-        const lineHeight = textSize * 1.2;
-        lines.forEach((line, index) => {
-          ctx.fillText(line, x, y + index * lineHeight);
-        });
-        
-        ctx.restore();
-
-        saveHistory(canvas, 'Texto');
-        setStatusText('Texto insertado en el lienzo');
-      };
-
-      if (document.fonts) {
-        setStatusText('Cargando tipografía de Google Fonts...');
-        document.fonts
-          .load(fontSpec)
-          .then(() => {
-            executeDraw();
-          })
-          .catch((err) => {
-            console.warn('Error al precargar fuente, dibujando con fallback:', err);
-            executeDraw();
-          });
-      } else {
-        executeDraw();
-      }
-    },
-    [fgColor, textFont, textSize, saveHistory, setStatusText],
-  );
 
   // --- EVENTOS DEL LIENZO ---
 
@@ -527,8 +715,8 @@ export function useCanvas() {
         secondaryColorRef.current = bgColor;
       }
 
-      // --- CASO 1: MANIPULAR SELECCIÓN EXISTENTE ---
-      if (activeTool === 'select' && selectionRectRef.current) {
+      // --- CASO 1: MANIPULAR SELECCIÓN EXISTENTE (select o move) ---
+      if ((activeTool === 'select' || activeTool === 'move') && selectionRectRef.current) {
         const rect = selectionRectRef.current;
         const pos = selectionOriginalPosRef.current;
 
@@ -546,6 +734,72 @@ export function useCanvas() {
 
         // Si hizo clic FUERA de la selección, la consolidamos de forma fija
         consolidateSelection();
+      }
+
+      // --- CASO 1.5: SELECCIÓN AUTOMÁTICA DE ELEMENTO POR CLIC (Herramienta Mover 'move') ---
+      if (activeTool === 'move') {
+        const rect = getContiguousElementRect(canvas, coords.x, coords.y, canvasBackground);
+        if (rect) {
+          const { x, y, w, h } = rect;
+
+          selectionRectRef.current = { x, y, w, h };
+          selectionOriginalPosRef.current = { x, y };
+          hasCutOrMovedRef.current = false;
+
+          // 1. Guardar lienzo original completo
+          originalImageDataBeforeMoveRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          // 2. Extraer la porción seleccionada
+          selectionImageRef.current = ctx.getImageData(x, y, w, h);
+
+          // 3. Crear el hueco vacío en el lienzo
+          ctx.save();
+          ctx.fillStyle = canvasBackground === 'black' ? '#000000' : '#ffffff';
+          ctx.fillRect(x, y, w, h);
+          ctx.restore();
+
+          // 4. Guardar el lienzo con el hueco en savedImageDataRef
+          savedImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          // 5. Dibujar la selección en su posición original flotante
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = w;
+          tempCanvas.height = h;
+          const tempCtx = tempCanvas.getContext('2d');
+          if (tempCtx) {
+            tempCtx.putImageData(selectionImageRef.current, 0, 0);
+            ctx.drawImage(tempCanvas, x, y);
+          }
+
+          // 6. Sincronizar recuadro de hormigas marchantes en Zustand
+          useCanvasStore.getState().setActiveSelection({ x, y, width: w, height: h });
+
+          // 7. Entrar en modo de arrastre de inmediato
+          isDraggingSelectionRef.current = true;
+          selectionDragStartRef.current = coords;
+
+          setStatusText(`Elemento seleccionado automáticamente (${w}x${h}px). Muévelo a placer.`);
+          return;
+        } else {
+          setStatusText('Haz clic en un trazo o elemento dibujado para seleccionarlo y moverlo.');
+          return;
+        }
+      }
+
+      // --- CASO 1.7: HERRAMIENTA DE SELECCIÓN RECTANGULAR ESTÁNDAR ---
+      if (activeTool === 'select') {
+        isDrawingRef.current = true;
+        startCoordsRef.current = coords;
+        lastCoordsRef.current = coords;
+        lastStabilizedCoordsRef.current = coords;
+
+        savedImageDataRef.current = ctx.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        );
+        return;
       }
 
       // --- CASO 2: CURVA BÉZIER PASO 1 (Curvar línea) ---
@@ -613,7 +867,66 @@ export function useCanvas() {
 
       // --- CASO 4: TEXTO EN CALIENTE WYSIWYG ---
       if (activeTool === 'text') {
+        // Si acabamos de hacer commit (blur→commit), ignorar este mousedown
+        // para evitar que se abra un nuevo cuadro inmediatamente después
+        if (justCommittedTextRef.current) {
+          justCommittedTextRef.current = false;
+          return;
+        }
+
+        const state = useAppStore.getState();
+        const prevCoords = state.textInputCoords;
+        const prevText = state.textValue;
+
+        // Buscar si hizo clic dentro de un texto ya existente
+        const currentHistoryIndex = useCanvasStore.getState().historyIndex;
+        committedTextsRef.current = committedTextsRef.current.filter(
+          (t) => t.historyIndex <= currentHistoryIndex,
+        );
+
+        const tolerance = 15;
+        const matchedText = [...committedTextsRef.current].reverse().find((t) => {
+          return (
+            coords.x >= t.x - tolerance &&
+            coords.x <= t.x + t.width + tolerance &&
+            coords.y >= t.y - tolerance &&
+            coords.y <= t.y + t.height + tolerance
+          );
+        });
+
+        if (matchedText) {
+          // Si ya había una caja abierta con texto no vacío y NO es la misma que estamos editando, consolidarla primero
+          if (prevCoords && prevText.trim() && (prevCoords.x !== matchedText.x || prevCoords.y !== matchedText.y)) {
+            drawTextOnCanvas(prevText, prevCoords.x, prevCoords.y);
+          }
+
+          // Establecer el estado del texto en edición
+          editingTextRef.current = matchedText;
+
+          // Revertir el canvas al estado antes de dibujar este texto
+          jumpToHistoryIndex(canvas, matchedText.historyIndex - 1);
+
+          // Cargar propiedades de texto en el store
+          ignoreBlurRef.current = true;
+          useAppStore.getState().setTextInputCoords({ x: matchedText.x, y: matchedText.y });
+          useAppStore.getState().setTextValue(matchedText.text);
+          useAppStore.getState().setTextFont(matchedText.font);
+          useAppStore.getState().setTextSize(matchedText.size);
+          useAppStore.getState().setFgColor(matchedText.color);
+
+          setStatusText('Editando texto consolidado...');
+          return;
+        }
+
+        // Si no hizo clic en un texto existente pero había una caja abierta con texto, consolidarla primero
+        if (prevCoords && prevText.trim()) {
+          drawTextOnCanvas(prevText, prevCoords.x, prevCoords.y);
+        }
+
+        // Crear una nueva caja vacía en la coordenada del clic
+        ignoreBlurRef.current = true;
         useAppStore.getState().setTextInputCoords({ x: coords.x, y: coords.y });
+        useAppStore.getState().setTextValue('');
         return;
       }
 
@@ -753,6 +1066,7 @@ export function useCanvas() {
       getOffscreenCanvas,
       consolidateSelection,
       fillShapes,
+      drawTextOnCanvas,
     ],
   );
 
@@ -767,9 +1081,74 @@ export function useCanvas() {
       const coords = getCoords(e);
       setCursorCoords(coords.x, coords.y);
 
+      // --- CASO 0.5: REDIMENSIONAR (ESCALAR) SELECCIÓN ACTIVA ---
+      if (isResizingRef.current && selectionRectRef.current) {
+        const start = resizeStartCoordsRef.current;
+        const rect = resizeStartRectRef.current!;
+
+        const dx = coords.x - start.x;
+        const dy = coords.y - start.y;
+
+        let newX = rect.x;
+        let newY = rect.y;
+        let newW = rect.w;
+        let newH = rect.h;
+
+        const handle = isResizingRef.current;
+        if (handle.includes('e')) { // Right
+          newW = Math.max(5, rect.w + dx);
+        }
+        if (handle.includes('s')) { // Bottom
+          newH = Math.max(5, rect.h + dy);
+        }
+        if (handle.includes('w')) { // Left
+          const potentialW = rect.w - dx;
+          if (potentialW >= 5) {
+            newX = rect.x + dx;
+            newW = potentialW;
+          }
+        }
+        if (handle.includes('n')) { // Top
+          const potentialH = rect.h - dy;
+          if (potentialH >= 5) {
+            newY = rect.y + dy;
+            newH = potentialH;
+          }
+        }
+
+        // Actualizar valores de selección en las referencias
+        selectionRectRef.current = { x: newX, y: newY, w: newW, h: newH };
+        selectionOriginalPosRef.current = { x: newX, y: newY };
+
+        // 1. Restaurar lienzo original (con el hueco limpio)
+        if (savedImageDataRef.current) {
+          ctx.putImageData(savedImageDataRef.current, 0, 0);
+        }
+
+        // 2. Dibujar la selección escalada
+        if (selectionImageRef.current) {
+          const tempCanvas = document.createElement('canvas');
+          const origW = selectionImageRef.current.width;
+          const origH = selectionImageRef.current.height;
+          tempCanvas.width = origW;
+          tempCanvas.height = origH;
+          const tempCtx = tempCanvas.getContext('2d');
+          if (tempCtx) {
+            tempCtx.putImageData(selectionImageRef.current, 0, 0);
+            ctx.drawImage(tempCanvas, newX, newY, newW, newH);
+          }
+        }
+
+        // 3. Sincronizar el recuadro visual de hormigas marchantes
+        useCanvasStore.getState().setActiveSelection({ x: newX, y: newY, width: newW, height: newH });
+
+        setStatusText(`Escalando selección: ${newW}x${newH}px`);
+        return;
+      }
+
       // --- CASO 1: MOVER ÁREA DE SELECCIÓN FLOTANTE ---
       if (
-        activeTool === 'select' &&
+        (activeTool === 'select' || activeTool === 'move') &&
         isDraggingSelectionRef.current &&
         selectionRectRef.current
       ) {
@@ -790,19 +1169,24 @@ export function useCanvas() {
         // 2. Dibujar ImageData en canvas virtual
         if (selectionImageRef.current) {
           const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = rect.w;
-          tempCanvas.height = rect.h;
+          const origW = selectionImageRef.current.width;
+          const origH = selectionImageRef.current.height;
+          tempCanvas.width = origW;
+          tempCanvas.height = origH;
           const tempCtx = tempCanvas.getContext('2d');
           if (tempCtx) {
             tempCtx.putImageData(selectionImageRef.current, 0, 0);
-            ctx.drawImage(tempCanvas, newX, newY);
+            ctx.drawImage(tempCanvas, newX, newY, rect.w, rect.h);
           }
         }
 
         // 3. Sincronizar recuadro de hormigas marchantes en Zustand
-        useCanvasStore
-          .getState()
-          .setActiveSelection({ x: newX, y: newY, width: rect.w, height: rect.h });
+        useCanvasStore.getState().setActiveSelection({
+          x: newX,
+          y: newY,
+          width: rect.w,
+          height: rect.h,
+        });
         return;
       }
 
@@ -881,16 +1265,16 @@ export function useCanvas() {
         let activeCoords = coords;
         if (smoothing) {
           const lastStab = lastStabilizedCoordsRef.current || coords;
-          
+
           // 1. Aplicar correa virtual (leash) de precisión (0-16px de radio)
           const leashRadius = smoothingLevel * 0.8;
           const dx = coords.x - lastStab.x;
           const dy = coords.y - lastStab.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          
+
           let targetX = coords.x;
           let targetY = coords.y;
-          
+
           if (distance < leashRadius) {
             targetX = lastStab.x;
             targetY = lastStab.y;
@@ -899,12 +1283,12 @@ export function useCanvas() {
             targetX = lastStab.x + dx * ratio;
             targetY = lastStab.y + dy * ratio;
           }
-          
+
           // 2. Promedio móvil exponencial (EMA) sobre el objetivo para fluidez extrema
           const weight = 1 / (1 + smoothingLevel * 1.2);
           const stabX = lastStab.x + (targetX - lastStab.x) * weight;
           const stabY = lastStab.y + (targetY - lastStab.y) * weight;
-          
+
           activeCoords = { x: stabX, y: stabY };
           lastStabilizedCoordsRef.current = activeCoords;
         }
@@ -971,7 +1355,9 @@ export function useCanvas() {
               } else {
                 // Array para guardar los tamaños de cada punto
                 const pointSizes = new Array(points.length);
-                const isTaperedBrush = activeTool === 'brush' && (style === 'normal' || style === 'watercolor');
+                const isTaperedBrush =
+                  activeTool === 'brush' &&
+                  (style === 'normal' || style === 'watercolor');
 
                 if (isTaperedBrush) {
                   // Calcular velocidad entre puntos
@@ -981,33 +1367,38 @@ export function useCanvas() {
                     const dy = points[i].y - points[i - 1].y;
                     speeds[i] = Math.sqrt(dx * dx + dy * dy);
                   }
-                  
+
                   // Suavizar la velocidad (filtro EMA)
                   let avgSpeed = 0;
                   for (let i = 0; i < points.length; i++) {
                     avgSpeed = avgSpeed * 0.8 + speeds[i] * 0.2;
-                    
+
                     // Modulación de grosor por velocidad (más rápido = más fino)
-                    const speedFactor = Math.max(0.35, Math.min(1.0, 1.0 - (avgSpeed / 25)));
+                    const speedFactor = Math.max(
+                      0.35,
+                      Math.min(1.0, 1.0 - avgSpeed / 25),
+                    );
                     let targetSize = size * speedFactor;
-                    
+
                     // Taper-In (cónica de inicio) en los primeros 12 puntos
                     const startDistance = i;
                     if (startDistance < 12) {
                       const ratio = startDistance / 12;
-                      targetSize *= (0.15 + 0.85 * ratio);
+                      targetSize *= 0.15 + 0.85 * ratio;
                     }
-                    
+
                     // Taper-Out (cónica de fin/punta activa) en los últimos 12 puntos
                     const pointsFromEnd = points.length - 1 - i;
                     if (pointsFromEnd < 12) {
                       const ratio = pointsFromEnd / 12;
-                      targetSize *= (0.15 + 0.85 * ratio);
+                      targetSize *= 0.15 + 0.85 * ratio;
                     }
-                    
+
                     pointSizes[i] = Math.max(1, targetSize);
                   }
-                  pointSizes[0] = pointSizes[1] ? pointSizes[1] * 0.3 : size * 0.15;
+                  pointSizes[0] = pointSizes[1]
+                    ? pointSizes[1] * 0.3
+                    : size * 0.15;
                 } else {
                   // Grosor uniforme para otros pinceles o lápiz, garantizando extremos redondeados perfectos
                   pointSizes.fill(size);
@@ -1019,19 +1410,23 @@ export function useCanvas() {
                   offCtx.arc(x, y, rSize / 2, 0, Math.PI * 2);
                   offCtx.fill();
                 };
-                
+
                 drawDab(points[0].x, points[0].y, pointSizes[0]);
-                
+
                 // Interpolación lineal entre dabs
                 const interpolateDabs = (
-                  x1: number, y1: number, s1: number,
-                  x2: number, y2: number, s2: number
+                  x1: number,
+                  y1: number,
+                  s1: number,
+                  x2: number,
+                  y2: number,
+                  s2: number,
                 ) => {
                   const dx = x2 - x1;
                   const dy = y2 - y1;
                   const dist = Math.sqrt(dx * dx + dy * dy);
                   const spacing = Math.max(0.4, Math.min(s1, s2) * 0.05); // Espaciado ultra-denso del 5% del tamaño para fluidez absoluta
-                  
+
                   if (dist > spacing) {
                     const steps = Math.ceil(dist / spacing);
                     for (let step = 1; step <= steps; step++) {
@@ -1048,55 +1443,74 @@ export function useCanvas() {
 
                 let currentX = points[0].x;
                 let currentY = points[0].y;
-                
+
                 for (let i = 1; i < points.length - 1; i++) {
                   const p0 = points[i - 1];
                   const p1 = points[i];
                   const p2 = points[i + 1];
-                  
+
                   const s0 = pointSizes[i - 1];
                   const s1 = pointSizes[i];
                   const s2 = pointSizes[i + 1];
-                  
+
                   const startX = i === 1 ? p0.x : (p0.x + p1.x) / 2;
                   const startY = i === 1 ? p0.y : (p0.y + p1.y) / 2;
-                  
+
                   const endX = (p1.x + p2.x) / 2;
                   const endY = (p1.y + p2.y) / 2;
-                  
+
                   const startS = i === 1 ? s0 : (s0 + s1) / 2;
                   const endS = (s1 + s2) / 2;
-                  
-                  const segmentLen = Math.sqrt((endX - startX) * (endX - startX) + (endY - startY) * (endY - startY));
+
+                  const segmentLen = Math.sqrt(
+                    (endX - startX) * (endX - startX) +
+                      (endY - startY) * (endY - startY),
+                  );
                   const stepSize = Math.max(0.4, Math.min(startS, endS) * 0.05);
-                  const curveSteps = Math.max(5, Math.ceil(segmentLen / stepSize));
-                  
+                  const curveSteps = Math.max(
+                    5,
+                    Math.ceil(segmentLen / stepSize),
+                  );
+
                   let prevCurveX = startX;
                   let prevCurveY = startY;
                   let prevCurveS = startS;
-                  
+
                   for (let step = 0; step <= curveSteps; step++) {
                     const t = step / curveSteps;
                     const mt = 1 - t;
-                    const bx = mt * mt * startX + 2 * mt * t * p1.x + t * t * endX;
-                    const by = mt * mt * startY + 2 * mt * t * p1.y + t * t * endY;
+                    const bx =
+                      mt * mt * startX + 2 * mt * t * p1.x + t * t * endX;
+                    const by =
+                      mt * mt * startY + 2 * mt * t * p1.y + t * t * endY;
                     const bs = startS + (endS - startS) * t;
-                    
-                    interpolateDabs(prevCurveX, prevCurveY, prevCurveS, bx, by, bs);
-                    
+
+                    interpolateDabs(
+                      prevCurveX,
+                      prevCurveY,
+                      prevCurveS,
+                      bx,
+                      by,
+                      bs,
+                    );
+
                     prevCurveX = bx;
                     prevCurveY = by;
                     prevCurveS = bs;
                   }
-                  
+
                   currentX = endX;
                   currentY = endY;
                 }
-                
+
                 const lastIdx = points.length - 1;
                 interpolateDabs(
-                  currentX, currentY, pointSizes[lastIdx - 1],
-                  points[lastIdx].x, points[lastIdx].y, pointSizes[lastIdx]
+                  currentX,
+                  currentY,
+                  pointSizes[lastIdx - 1],
+                  points[lastIdx].x,
+                  points[lastIdx].y,
+                  pointSizes[lastIdx],
                 );
               }
             }
@@ -1240,9 +1654,17 @@ export function useCanvas() {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
+      // --- CASO 0.5: CONSOLIDAR REDIMENSIONAMIENTO DE SELECCIÓN ---
+      if (isResizingRef.current) {
+        isResizingRef.current = null;
+        resizeStartRectRef.current = null;
+        setStatusText('Tamaño de selección ajustado');
+        return;
+      }
+
       // --- CASO 1: CONSOLIDAR MOVER SELECCIÓN ---
       if (
-        activeTool === 'select' &&
+        (activeTool === 'select' || activeTool === 'move') &&
         isDraggingSelectionRef.current &&
         selectionRectRef.current
       ) {
@@ -1268,19 +1690,24 @@ export function useCanvas() {
         // 2. Dibujar ImageData en su nueva posición definitiva flotante
         if (selectionImageRef.current) {
           const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = rect.w;
-          tempCanvas.height = rect.h;
+          const origW = selectionImageRef.current.width;
+          const origH = selectionImageRef.current.height;
+          tempCanvas.width = origW;
+          tempCanvas.height = origH;
           const tempCtx = tempCanvas.getContext('2d');
           if (tempCtx) {
             tempCtx.putImageData(selectionImageRef.current, 0, 0);
-            ctx.drawImage(tempCanvas, newX, newY);
+            ctx.drawImage(tempCanvas, newX, newY, rect.w, rect.h);
           }
         }
 
         // 3. Sincronizar recuadro de hormigas marchantes en Zustand
-        useCanvasStore
-          .getState()
-          .setActiveSelection({ x: newX, y: newY, width: rect.w, height: rect.h });
+        useCanvasStore.getState().setActiveSelection({
+          x: newX,
+          y: newY,
+          width: rect.w,
+          height: rect.h,
+        });
         return;
       }
 
@@ -1338,7 +1765,12 @@ export function useCanvas() {
           }
 
           // 2. Guardar lienzo original completo (antes de recortar el hueco)
-          originalImageDataBeforeMoveRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          originalImageDataBeforeMoveRef.current = ctx.getImageData(
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+          );
 
           // 3. Extraer la porción seleccionada
           selectionImageRef.current = ctx.getImageData(x, y, w, h);
@@ -1350,7 +1782,12 @@ export function useCanvas() {
           ctx.restore();
 
           // 5. Guardar el lienzo con el hueco en savedImageDataRef
-          savedImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          savedImageDataRef.current = ctx.getImageData(
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+          );
 
           // 6. Dibujar la selección en su posición actual de previsualización flotante
           const tempCanvas = document.createElement('canvas');
@@ -1400,7 +1837,7 @@ export function useCanvas() {
     setCursorCoords(null, null);
 
     // Cancelar arrastre de selección si sale del lienzo
-    if (activeTool === 'select' && isDraggingSelectionRef.current) {
+    if ((activeTool === 'select' || activeTool === 'move') && isDraggingSelectionRef.current) {
       isDraggingSelectionRef.current = false;
       return;
     }
@@ -1524,11 +1961,73 @@ export function useCanvas() {
     savedImageDataRef.current = null;
   }, [brushSize, fgColor, bgColor, fillShapes, saveHistory, setStatusText]);
 
-  const onDoubleClick = useCallback(() => {
-    if (activeTool === 'polygon') {
-      consolidatePolygon();
-    }
-  }, [consolidatePolygon, activeTool]);
+  const onDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (activeTool === 'polygon') {
+        consolidatePolygon();
+        return;
+      }
+
+      if (activeTool === 'text') {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const coords = getCoords(e);
+        const currentHistoryIndex = useCanvasStore.getState().historyIndex;
+
+        // Filtrar textos válidos pertenecientes a la historia activa actual
+        committedTextsRef.current = committedTextsRef.current.filter(
+          (t) => t.historyIndex <= currentHistoryIndex,
+        );
+
+        // Usamos una tolerancia de 15px alrededor de la caja del texto para que sea fácil hacer clic
+        const tolerance = 15;
+        const matchedText = [...committedTextsRef.current].reverse().find((t) => {
+          return (
+            coords.x >= t.x - tolerance &&
+            coords.x <= t.x + t.width + tolerance &&
+            coords.y >= t.y - tolerance &&
+            coords.y <= t.y + t.height + tolerance
+          );
+        });
+
+        if (matchedText) {
+          // Si ya había una caja abierta con texto no vacío, consolidarla primero
+          const state = useAppStore.getState();
+          if (state.textInputCoords && state.textValue.trim()) {
+            drawTextOnCanvas(
+              state.textValue,
+              state.textInputCoords.x,
+              state.textInputCoords.y,
+            );
+          }
+
+          // Establecer el estado del texto en edición
+          editingTextRef.current = matchedText;
+
+          // Revertir el canvas al estado antes de dibujar este texto
+          jumpToHistoryIndex(canvas, matchedText.historyIndex - 1);
+
+          // Cargar propiedades de texto en el store
+          useAppStore.getState().setTextInputCoords({ x: matchedText.x, y: matchedText.y });
+          useAppStore.getState().setTextValue(matchedText.text);
+          useAppStore.getState().setTextFont(matchedText.font);
+          useAppStore.getState().setTextSize(matchedText.size);
+          useAppStore.getState().setFgColor(matchedText.color);
+
+          setStatusText('Editando texto consolidado...');
+        }
+      }
+    },
+    [
+      activeTool,
+      consolidatePolygon,
+      getCoords,
+      drawTextOnCanvas,
+      jumpToHistoryIndex,
+      setStatusText,
+    ],
+  );
 
   const selectAll = useCallback(() => {
     const canvas = canvasRef.current;
@@ -1579,7 +2078,25 @@ export function useCanvas() {
     consolidateSelection();
   }, [consolidateSelection]);
 
+  const startResizeSelection = useCallback((handle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!selectionRectRef.current) return;
+
+    isResizingRef.current = handle;
+    resizeStartRectRef.current = { ...selectionRectRef.current };
+    resizeStartCoordsRef.current = getCoords(e as any);
+  }, [getCoords]);
+
   const cancelActiveOperation = useCallback(() => {
+    // 0. Cancelar herramienta de texto flotante
+    if (activeTool === 'text') {
+      useAppStore.getState().setTextInputCoords(null);
+      useAppStore.getState().setTextValue('');
+      setStatusText('Edición de texto cancelada');
+      return;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -1744,10 +2261,13 @@ export function useCanvas() {
     cutSelection,
     pasteSelection,
     selectionActive: !!selectionRectRef.current,
+    startResizeSelection,
 
     // Método de texto WYSIWYG
     drawTextOnCanvas,
     loadDrawingOnCanvas,
+    ignoreBlurRef,
+    justCommittedTextRef,
 
     // Métodos avanzados recuperados
     onDoubleClick,

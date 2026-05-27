@@ -174,6 +174,8 @@ export function HeaderBar({
   );
 
   // Estados locales para nuevos modals
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+  const [selectedTech, setSelectedTech] = useState<string | null>(null);
   const [newWidth, setNewWidth] = useState(canvasWidth);
   const [newHeight, setNewHeight] = useState(canvasHeight);
   const [newBackground, setNewBackground] = useState<
@@ -364,49 +366,69 @@ export function HeaderBar({
 
   return (
     <div className="bg-[var(--bg-primary)] h-[64px] min-h-[64px] flex items-center justify-between px-4 border-b border-[var(--border-color)] text-[var(--text-main)] theme-transition select-none z-50">
-      {/* 1. Izquierda: Logo Retro Paint */}
+      {/* 1. Izquierda: Logo Retro Paint y Creador */}
       <div className="flex items-center gap-3">
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 16 16"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="drop-shadow-sm"
-        >
-          <title>Retro Paint Logo</title>
-          <rect x="3" y="1" width="10" height="14" fill="var(--accent-color)" />
-          <rect x="4" y="2" width="8" height="12" fill="var(--bg-card)" />
-          <rect x="5" y="4" width="2" height="2" fill="#FF4B4B" />
-          <rect x="9" y="4" width="2" height="2" fill="#FFC93C" />
-          <rect x="5" y="8" width="2" height="2" fill="#4BC56B" />
-          <rect x="9" y="8" width="2" height="2" fill="#00A2FF" />
-          <rect x="7" y="11" width="2" height="2" fill="#9D4EDD" />
-          <rect
-            x="3"
-            y="1"
-            width="10"
-            height="1"
-            fill="#FFFFFF"
-            opacity="0.4"
-          />
-          <rect
-            x="3"
-            y="1"
-            width="1"
-            height="14"
-            fill="#FFFFFF"
-            opacity="0.4"
-          />
-        </svg>
-        <div className="flex flex-col">
-          <span className="font-press-start text-[8px] text-[var(--text-main)] tracking-widest font-bold leading-3">
-            RETRO
-          </span>
-          <span className="font-press-start text-[8px] text-[var(--text-main)] tracking-widest font-bold leading-3">
-            PAINT
-          </span>
+        <div className="flex items-center gap-2">
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 16 16"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className="drop-shadow-sm"
+          >
+            <title>Retro Paint Logo</title>
+            <rect x="3" y="1" width="10" height="14" fill="var(--accent-color)" />
+            <rect x="4" y="2" width="8" height="12" fill="var(--bg-card)" />
+            <rect x="5" y="4" width="2" height="2" fill="#FF4B4B" />
+            <rect x="9" y="4" width="2" height="2" fill="#FFC93C" />
+            <rect x="5" y="8" width="2" height="2" fill="#4BC56B" />
+            <rect x="9" y="8" width="2" height="2" fill="#00A2FF" />
+            <rect x="7" y="11" width="2" height="2" fill="#9D4EDD" />
+            <rect
+              x="3"
+              y="1"
+              width="10"
+              height="1"
+              fill="#FFFFFF"
+              opacity="0.4"
+            />
+            <rect
+              x="3"
+              y="1"
+              width="1"
+              height="14"
+              fill="#FFFFFF"
+              opacity="0.4"
+            />
+          </svg>
+          <div className="flex flex-col">
+            <span className="font-press-start text-[8px] text-[var(--text-main)] tracking-widest font-bold leading-3">
+              RETRO
+            </span>
+            <span className="font-press-start text-[8px] text-[var(--text-main)] tracking-widest font-bold leading-3">
+              PAINT
+            </span>
+          </div>
         </div>
+
+        {/* Separador vertical sutil */}
+        <div className="w-[1px] h-6 bg-[var(--border-color)]/30" />
+
+        {/* Firma clickable visible siempre */}
+        <button
+          type="button"
+          onClick={() => setIsInfoModalOpen(true)}
+          className="flex flex-col items-start cursor-pointer transition-all text-left group hover:scale-[1.02] active:scale-[0.98]"
+          title="Ver información de RetroPaint y tecnologías"
+        >
+          <span className="text-[6.5px] text-[var(--text-muted)] font-mono tracking-wider font-bold uppercase leading-none mb-0.5 opacity-80 group-hover:opacity-100">
+            Creado por
+          </span>
+          <span className="text-[7.5px] text-[var(--accent-color)] font-press-start tracking-tight font-bold hover:underline leading-none">
+            WilmerAndradev
+          </span>
+        </button>
       </div>
 
       {/* 2. Centro/Derecha: Controles */}
@@ -1282,6 +1304,148 @@ export function HeaderBar({
                     type="button"
                     onClick={() => setIsShortcutsModalOpen(false)}
                     className="px-5 py-2.5 bg-[var(--accent-color)] text-white hover:bg-[var(--accent-color)]/90 active:scale-95 transition-all text-[13px] font-bold rounded-lg uppercase tracking-wider"
+                  >
+                    Aceptar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* --- MODAL DE INFORMACIÓN (ACERCA DE) --- */}
+      {isInfoModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] overflow-y-auto">
+            <div className="flex items-center justify-center min-h-full p-4">
+              <div className="bg-[var(--bg-card)] border-2 border-[var(--border-color)] shadow-2xl rounded-xl p-5 w-full max-w-[480px] text-[var(--text-main)] my-auto flex flex-col relative overflow-hidden">
+                
+                {/* Decoración retro en la esquina                 {/* Title Bar */}
+                <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3 mb-4 z-10">
+                  <h3 className="font-press-start text-[11px] tracking-wide text-[var(--accent-color)] flex items-center gap-2">
+                    ℹ️ ACERCA DE RETROPAINT
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setIsInfoModalOpen(false)}
+                    className="text-[14px] font-bold hover:text-[var(--accent-color)] transition-colors cursor-pointer w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--border-color)]/10"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 flex flex-col gap-4 z-10 text-left">
+                  {/* Creador destacado */}
+                  <div className="bg-[var(--bg-primary)] border border-[var(--border-color)] p-4 rounded-lg flex flex-col gap-1 items-center justify-center text-center shadow-sm">
+                    <span className="text-[10px] font-mono tracking-wider text-[var(--text-muted)] uppercase font-bold">
+                      Desarrollado y Diseñado por
+                    </span>
+                    <span className="text-[14px] text-[var(--accent-color)] font-press-start tracking-wider font-extrabold my-1 select-all">
+                      WilmerAndradev
+                    </span>
+                  </div>
+
+                  {/* Descripción del Programa */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[11px] font-bold tracking-wider text-[var(--accent-color)] uppercase">
+                      El Proyecto
+                    </span>
+                    <p className="text-[12.5px] leading-relaxed text-[var(--text-main)] font-medium">
+                      RetroPaint es un sencillo editor de dibujo web inspirado en el clásico MS Paint de los años 90. Permite realizar dibujos de pixel-art, pintar con paletas de colores personalizadas, y seleccionar y mover elementos libremente en el lienzo con una interfaz limpia y nostálgica.
+                    </p>
+                  </div>
+
+                  {/* Tecnologías Utilizadas */}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between border-b border-[var(--border-color)]/25 pb-1">
+                      <span className="text-[11px] font-bold tracking-wider text-[var(--accent-color)] uppercase">
+                        Tecnologías Utilizadas
+                      </span>
+                      <span className="text-[9.5px] font-mono text-[var(--text-muted)] font-semibold uppercase">
+                        Haz clic para ver detalles de uso
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { name: 'React 19', desc: 'Interfaces reactivas de alto rendimiento' },
+                        { name: 'Vite', desc: 'Empaquetador de desarrollo ultrarrápido' },
+                        { name: 'Zustand', desc: 'Gestor del estado global centralizado' },
+                        { name: 'Tailwind CSS', desc: 'Sistema de estilos retro responsivo' },
+                        { name: 'GSAP', desc: 'Micro-animaciones fluidas premium' },
+                        { name: 'TypeScript', desc: 'Estabilidad con tipado estático robusto' },
+                        { name: 'Canvas API', desc: 'Renderizado y edición de píxeles veloz' },
+                        { name: 'Biome / Vitest', desc: 'Entorno de calidad y pruebas unitarias' },
+                      ].map((tech) => {
+                        const isSelected = selectedTech === tech.name;
+                        return (
+                          <button
+                            key={tech.name}
+                            type="button"
+                            onClick={() =>
+                              setSelectedTech(selectedTech === tech.name ? null : tech.name)
+                            }
+                            className={`w-full text-left bg-[var(--bg-primary)] border px-3 py-2 rounded-md transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10 shadow-sm'
+                                : 'border-[var(--border-color)]/60 hover:border-[var(--accent-color)]/40 hover:bg-[var(--bg-primary)]/80'
+                            }`}
+                          >
+                            <div className="text-[11.5px] font-bold text-[var(--text-main)] font-mono flex items-center justify-between">
+                              <span>{tech.name}</span>
+                              <span className="text-[9px] text-[var(--accent-color)] font-bold">
+                                {isSelected ? '▲' : '▼'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-[var(--text-muted)] leading-tight mt-[2px]">
+                              {tech.desc}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Resumen dinámico al hacer clic en una tecnología */}
+                    {selectedTech && (
+                      <div className="bg-[var(--bg-primary)] border-l-2 border-[var(--accent-color)] p-3 rounded-md text-[11.5px] leading-relaxed transition-all mt-1.5 animate-fadeIn">
+                        <span className="font-bold text-[var(--accent-color)] font-mono uppercase block mb-1 text-[11px]">
+                          Uso de {selectedTech} en RetroPaint:
+                        </span>
+                        <p className="text-[var(--text-main)] font-medium text-justify">
+                          {{
+                            'React 19':
+                              'Estructura la interfaz de usuario de forma modular y reactiva. Gestiona el ciclo de vida del lienzo, la renderización de las herramientas dinámicas y los paneles flotantes con un rendimiento excepcional.',
+                            'Vite':
+                              'Funciona como el motor de construcción rápido del proyecto, permitiendo un flujo de desarrollo instantáneo mediante recarga rápida de módulos (HMR) y un empaquetado final ligero y optimizado.',
+                            'Zustand':
+                              'Es el núcleo del estado global de la aplicación. Administra y sincroniza en tiempo real las herramientas activas, el color seleccionado, el grosor del pincel, el zoom y las dimensiones del lienzo sin re-renderizados innecesarios.',
+                            'Tailwind CSS':
+                              'Proporciona el sistema de diseño responsivo de RetroPaint. Permite crear la apariencia clásica de los 90 junto con el soporte nativo para los temas claro y oscuro con transiciones suaves.',
+                            'GSAP':
+                              'Añade micro-animaciones premium a la interfaz. Se encarga de hacer que la apertura de modales, los cambios de temas y las interacciones con botones se sientan fluidas y dinámicas en pantalla.',
+                            'TypeScript':
+                              'Asegura la solidez del código mediante tipado estático estricto. Previene errores en tiempo de desarrollo al definir rigurosamente la estructura del lienzo, las herramientas y el historial de cambios.',
+                            'Canvas API':
+                              'Es el motor gráfico de dibujo en tiempo real. Gestiona la rasterización directa de píxeles para el lápiz, pincel, figuras geométricas, relleno de color y las transformaciones de escala en la selección.',
+                            'Biome / Vitest':
+                              'Biome mantiene la calidad del código, el formateo y el análisis estático limpio. Vitest se utiliza para ejecutar pruebas unitarias del algoritmo de selección de píxeles contiguos de forma instantánea.',
+                          }[selectedTech] || ''}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer Close Button */}
+                <div className="border-t border-[var(--border-color)] pt-3 mt-5 flex justify-end z-10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInfoModalOpen(false);
+                      setSelectedTech(null);
+                    }}
+                    className="px-6 py-2.5 bg-[var(--accent-color)] text-white hover:bg-[var(--accent-color)]/90 active:scale-95 transition-all text-[10.5px] font-press-start rounded-lg uppercase tracking-wide cursor-pointer shadow-md"
                   >
                     Aceptar
                   </button>
